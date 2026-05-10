@@ -2,59 +2,74 @@ require('dotenv').config();
 const axios = require('axios');
 const { getToken } = require('./auth');
 
-const API_URL = 'https://api.betfair.com/exchange/betting/json-rpc/v1';
+const BR_API = 'https://ero.betfair.bet.br/www/sports/exchange/readonly/v1/bymarket';
 
-async function apiCall(method, params) {
+async function fetchMarkets(marketIds, types = 'MARKET_STATE,RUNNER_STATE,RUNNER_EXCHANGE_PRICES_BEST') {
   const token = await getToken();
-  const response = await axios.post(
-    API_URL,
-    [{ jsonrpc: '2.0', method: `SportsAPING/v1.0/${method}`, params, id: 1 }],
-    {
-      headers: {
-        'X-Application': process.env.BETFAIR_APP_KEY,
-        'X-Authentication': token,
-        'Content-Type': 'application/json',
-      },
+  const response = await axios.get(BR_API, {
+    params: {
+      _ak: process.env.BETFAIR_APP_KEY,
+      alt: 'json',
+      marketIds: marketIds.join(','),
+      types,
+    },
+    headers: { 'X-Authentication': token },
+  });
+
+  const markets = [];
+  const data = response.data;
+
+  for (const eventType of (data.eventTypes || [])) {
+    for (const eventNode of (eventType.eventNodes || [])) {
+      for (const marketNode of (eventNode.marketNodes || [])) {
+        if (!marketNode.state?.inplay && marketNode.state?.status === 'OPEN') {
+          markets.push({
+            marketId: marketNode.marketId,
+            marketStartTime: marketNode.description?.marketTime,
+            event: {
+              name: eventNode.event?.name || 'Jogo desconhecido',
+              id: eventNode.eventId,
+            },
+            runners: (marketNode.runners || []).map(r => ({
+              selectionId: r.id,
+              runnerName: r.description?.runnerName,
+              ex: {
+                availableToBack: r.exchange?.availableToBack || [],
+                availableToLay: r.exchange?.availableToLay || [],
+              },
+            })),
+          });
+        }
+      }
     }
-  );
-  return response.data[0].result;
+  }
+
+  return markets;
 }
 
-// Busca jogos de futebol pré-jogo nas próximas 24h
 async function getFootballMarkets() {
-  const now = new Date();
-  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-  const markets = await apiCall('listMarketCatalogue', {
-    filter: {
-      eventTypeIds: ['1'], // 1 = Futebol
-      marketCountries: ['BR'],
-      marketTypeCodes: ['MATCH_ODDS'],
-      marketStartTime: {
-        from: now.toISOString(),
-        to: tomorrow.toISOString(),
-      },
-      inPlayOnly: false,
-    },
-    marketProjection: ['EVENT', 'RUNNER_DESCRIPTION', 'MARKET_START_TIME'],
-    maxResults: 20,
-    sort: 'FIRST_TO_START',
-  });
-
-  return markets || [];
+  try {
+    const seedMarketIds = [
+      '1.257420782', '1.257422705', '1.257421819', '1.257879109',
+      '1.257979522', '1.257979766', '1.257953870', '1.257964723',
+      '1.257974891', '1.257965528', '1.257891938', '1.257891573',
+      '1.257890768', '1.257944768', '1.257752406',
+    ];
+    return await fetchMarkets(seedMarketIds, 'MARKET_STATE');
+  } catch (error) {
+    console.error('Erro ao buscar mercados:', error.response?.data || error.message);
+    return [];
+  }
 }
 
-// Busca odds de um mercado específico
 async function getMarketOdds(marketId) {
-  const books = await apiCall('listMarketBook', {
-    marketIds: [marketId],
-    priceProjection: {
-      priceData: ['EX_BEST_OFFERS'],
-      exBestOffersOverrides: { bestPricesDepth: 3 },
-    },
-  });
-
-  return books?.[0] || null;
+  try {
+    const markets = await fetchMarkets([marketId]);
+    return markets[0] || null;
+  } catch (error) {
+    console.error('Erro ao buscar odds:', error.response?.data || error.message);
+    return null;
+  }
 }
 
 module.exports = { getFootballMarkets, getMarketOdds };
