@@ -4,34 +4,37 @@ const Anthropic = require('@anthropic-ai/sdk');
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 async function analyzeMatch(marketData, odds, history = []) {
-  const prompt = `Você é um analista especialista em trading esportivo pré-jogo na Betfair.
+  const runners = odds?.runners?.map(r => ({
+    name: r.runnerName || 'Runner',
+    back: r.ex?.availableToBack?.[0]?.price || 0,
+    lay: r.ex?.availableToLay?.[0]?.price || 0,
+  })) || [];
 
-MERCADO: ${marketData.event?.name || 'Jogo de futebol'}
-DATA: ${marketData.marketStartTime}
-RUNNERS (Seleções):
-${odds.runners?.map(r => `- ${r.runnerName}: Back ${r.ex?.availableToBack?.[0]?.price || 'N/A'} | Lay ${r.ex?.availableToLay?.[0]?.price || 'N/A'}`).join('\n')}
+  const prompt = `Você é um trader esportivo especialista na Betfair Exchange.
 
-HISTÓRICO RECENTE DO BOT:
+JOGO: ${marketData.event?.name || 'Futebol'}
+RUNNERS E ODDS:
+${runners.map((r, i) => `${i+1}. ${r.name}: Back ${r.back} | Lay ${r.lay}`).join('\n')}
+
+HISTÓRICO RECENTE:
 ${history.length > 0 ? history.slice(-5).map(h => `- ${h.match}: ${h.result} (PnL: ${h.pnl})`).join('\n') : 'Sem histórico ainda'}
 
-REGRAS DO SISTEMA:
-- Banca: R$100
-- Meta mensal: 10%
-- Comissão Betfair: 5% sobre lucro
-- Odd mínima para entrar: 2.10 (cobre taxa + 100% de lucro)
-- Valor mínimo de aposta da Betfair: R$2,00
+REGRAS:
+- Odd mínima para entrar: 2.10
+- Comissão Betfair: 5%
 - Só entrar se confiança >= 70%
+- Stake: 2-5% da banca
 
-Analise este mercado e responda APENAS em JSON válido:
+Analise e responda APENAS JSON válido:
 {
   "shouldBet": true/false,
   "confidence": 0-100,
-  "selection": "nome do runner escolhido",
+  "selection": "nome do runner",
   "betType": "BACK ou LAY",
   "targetOdd": número,
-  "exitOdd": número (odd para saída com lucro),
-  "stakePercent": 2-5 (% da banca a arriscar),
-  "reasoning": "motivo em 2 linhas",
+  "exitOdd": número,
+  "stakePercent": 2-5,
+  "reasoning": "motivo em 1 linha",
   "riskLevel": "LOW/MEDIUM/HIGH"
 }`;
 

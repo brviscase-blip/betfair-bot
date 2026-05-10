@@ -19,18 +19,18 @@ async function fetchMarkets(marketIds, types = 'MARKET_STATE,RUNNER_STATE,RUNNER
   const markets = [];
   const data = response.data;
 
-  for (const eventType of (data.eventTypes || [])) {
-    for (const eventNode of (eventType.eventNodes || [])) {
-      for (const marketNode of (eventNode.marketNodes || [])) {
-        if (!marketNode.state?.inplay && marketNode.state?.status === 'OPEN') {
+  for (const et of (data.eventTypes || [])) {
+    for (const en of (et.eventNodes || [])) {
+      for (const mn of (en.marketNodes || [])) {
+        if (!mn.state?.inplay && mn.state?.status === 'OPEN') {
           markets.push({
-            marketId: marketNode.marketId,
-            marketStartTime: marketNode.description?.marketTime,
+            marketId: mn.marketId,
+            marketStartTime: mn.description?.marketTime,
             event: {
-              name: eventNode.event?.name || 'Jogo desconhecido',
-              id: eventNode.eventId,
+              name: en.event?.eventName || en.event?.name || 'Jogo desconhecido',
+              id: en.eventId,
             },
-            runners: (marketNode.runners || []).map(r => ({
+            runners: (mn.runners || []).map(r => ({
               selectionId: r.id,
               runnerName: r.description?.runnerName,
               ex: {
@@ -55,7 +55,7 @@ async function getFootballMarkets() {
       '1.257974891', '1.257965528', '1.257891938', '1.257891573',
       '1.257890768', '1.257944768', '1.257752406',
     ];
-    return await fetchMarkets(seedMarketIds, 'MARKET_STATE');
+    return await fetchMarkets(seedMarketIds, 'MARKET_STATE,MARKET_DESCRIPTION,EVENT');
   } catch (error) {
     console.error('Erro ao buscar mercados:', error.response?.data || error.message);
     return [];
