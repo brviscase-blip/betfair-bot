@@ -27,8 +27,7 @@ async function getFootballMarkets() {
 
   const markets = await apiCall('listMarketCatalogue', {
     filter: {
-      eventTypeIds: ['1'], // 1 = Futebol
-      marketCountries: ['BR'],
+      eventTypeIds: ['1'],
       marketTypeCodes: ['MATCH_ODDS'],
       marketStartTime: {
         from: now.toISOString(),
