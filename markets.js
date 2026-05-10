@@ -2,58 +2,101 @@ require('dotenv').config();
 const axios = require('axios');
 const { getToken } = require('./auth');
 
-const API_URL = 'https://api.betfair.com/exchange/betting/rest/v1.0';
+const BR_API = 'https://ero.betfair.bet.br/www/sports/exchange/readonly/v1';
 
-async function apiCall(method, params) {
-  const token = await getToken();
-  const response = await axios.post(
-    `${API_URL}/${method}/`,
-    params,
-    {
-      headers: {
-        'X-Application': process.env.BETFAIR_APP_KEY,
-        'X-Authentication': token,
-        'Content-Type': 'application/json',
-      },
-    }
-  );
-  return response.data;
-}
-
-// Busca jogos de futebol pré-jogo nas próximas 24h
+// Busca jogos de futebol pré-jogo nas próximas 24h via endpoint BR
 async function getFootballMarkets() {
-  const now = new Date();
-  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  try {
+    const token = await getToken();
 
-  const markets = await apiCall('listMarketCatalogue', {
-    filter: {
-      eventTypeIds: ['1'],
-      marketTypeCodes: ['MATCH_ODDS'],
-      marketStartTime: {
-        from: now.toISOString(),
-        to: tomorrow.toISOString(),
+    const response = await axios.get(`${BR_API}/byevent`, {
+      params: {
+        _ak: process.env.BETFAIR_APP_KEY,
+        alt: 'json',
+        eventTypeIds: '1',
+        types: 'MARKET_STATE,MARKET_RATES,MARKET_DESCRIPTION,EVENT,RUNNER_DESCRIPTION',
       },
-      inPlayOnly: false,
-    },
-    marketProjection: ['EVENT', 'RUNNER_DESCRIPTION', 'MARKET_START_TIME'],
-    maxResults: 20,
-    sort: 'FIRST_TO_START',
-  });
+      headers: {
+        'X-Authentication': token,
+        'Accept': 'application/json',
+      },
+    });
 
-  return markets || [];
+    const data = response.data;
+    const markets = [];
+
+    if (data.eventTypes) {
+      for (const eventType of data.eventTypes) {
+        for (const eventNode of (eventType.eventNodes || [])) {
+          for (const marketNode of (eventNode.marketNodes || [])) {
+            if (!marketNode.state?.inplay) {
+              markets.push({
+                marketId: marketNode.marketId,
+                marketStartTime: marketNode.description?.marketTime,
+                event: {
+                  name: eventNode.event?.name || 'Jogo desconhecido',
+                  id: eventNode.eventId,
+                },
+                runners: marketNode.runners || [],
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return markets.slice(0, 20);
+  } catch (error) {
+    console.error('Erro ao buscar mercados:', error.response?.data || error.message);
+    return [];
+  }
 }
 
-// Busca odds de um mercado específico
+// Busca odds de um mercado específico via endpoint BR
 async function getMarketOdds(marketId) {
-  const books = await apiCall('listMarketBook', {
-    marketIds: [marketId],
-    priceProjection: {
-      priceData: ['EX_BEST_OFFERS'],
-      exBestOffersOverrides: { bestPricesDepth: 3 },
-    },
-  });
+  try {
+    const token = await getToken();
 
-  return books?.[0] || null;
+    const response = await axios.get(`${BR_API}/bymarket`, {
+      params: {
+        _ak: process.env.BETFAIR_APP_KEY,
+        alt: 'json',
+        marketIds: marketId,
+        types: 'MARKET_STATE,RUNNER_DESCRIPTION,RUNNER_STATE,MARKET_RATES',
+      },
+      headers: {
+        'X-Authentication': token,
+        'Accept': 'application/json',
+      },
+    });
+
+    const data = response.data;
+
+    for (const eventType of (data.eventTypes || [])) {
+      for (const eventNode of (eventType.eventNodes || [])) {
+        for (const marketNode of (eventNode.marketNodes || [])) {
+          if (marketNode.marketId === marketId) {
+            return {
+              marketId,
+              runners: (marketNode.runners || []).map(r => ({
+                selectionId: r.id,
+                runnerName: r.description?.runnerName,
+                ex: {
+                  availableToBack: r.exchange?.availableToBack || [],
+                  availableToLay: r.exchange?.availableToLay || [],
+                },
+              })),
+            };
+          }
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Erro ao buscar odds:', error.response?.data || error.message);
+    return null;
+  }
 }
 
 module.exports = { getFootballMarkets, getMarketOdds };
