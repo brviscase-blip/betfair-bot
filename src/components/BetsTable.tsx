@@ -46,21 +46,21 @@ export function BetsTable({ bets }: BetsTableProps) {
           </thead>
           <tbody className="divide-y divide-border/20">
             {bets.map((bet) => {
-              const pnl = (bet.stake * bet.entryOdd) - (bet.stake * bet.currentOdd);
+              const pnl = (bet.stake * bet.entry_odd) - (bet.stake * bet.current_odd);
               return (
               <tr key={bet.id} className="hover:bg-surface-hover/30 transition-colors">
-                <td className="px-4 py-3 font-mono text-text-secondary whitespace-nowrap">{formatTime(bet.placedAt)}</td>
+                <td className="px-4 py-3 font-mono text-text-secondary whitespace-nowrap">{formatTime(bet.placed_at)}</td>
                 <td className="px-4 py-3 font-medium whitespace-nowrap">{bet.match}</td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <span className={cn("inline-block px-1.5 py-0.5 rounded text-[10px] font-bold mr-1.5", 
-                    bet.betType === 'BACK' ? 'bg-primary/10 text-primary' : 'bg-pink-500/10 text-pink-500'
+                    bet.bet_type === 'BACK' ? 'bg-primary/10 text-primary' : 'bg-pink-500/10 text-pink-500'
                   )}>
-                    {bet.betType}
+                    {bet.bet_type}
                   </span>
                   {bet.selection}
                 </td>
-                <td className="px-4 py-3 font-mono">@{bet.entryOdd.toFixed(2)}</td>
-                <td className="px-4 py-3 font-mono">@{bet.currentOdd.toFixed(2)}</td>
+                <td className="px-4 py-3 font-mono">@{bet.entry_odd.toFixed(2)}</td>
+                <td className="px-4 py-3 font-mono">@{bet.current_odd.toFixed(2)}</td>
                 <td className="px-4 py-3 font-mono text-text-secondary">{formatCurrency(bet.stake)}</td>
                 <td className="px-4 py-3 text-center">{getStatusBadge(bet.status)}</td>
                 <td className={cn(

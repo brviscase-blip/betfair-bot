@@ -51,31 +51,31 @@ export function ConfigPanel({ isOpen, onClose }: ConfigPanelProps) {
                 <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Gestão de Risco</h3>
                 
                 <div className="bg-background border border-border/50 rounded-lg p-4">
-                  <label className="text-sm font-medium mb-1.5 block">Stop Loss Diário (%)</label>
+                  <label className="text-sm font-medium mb-1.5 block">Stop Loss (R$)</label>
                   <input 
                     type="number"
-                    value={config.stopLossDailyPct}
-                    onChange={e => setConfig({...config, stopLossDailyPct: parseFloat(e.target.value)})}
+                    value={config.stopLoss}
+                    onChange={e => setConfig({...config, stopLoss: parseFloat(e.target.value)})}
                     className="w-full bg-surface-hover border border-border rounded px-3 py-1.5 font-mono"
                   />
                 </div>
 
                 <div className="bg-background border border-border/50 rounded-lg p-4">
-                  <label className="text-sm font-medium mb-1.5 block">Stop Gain Diário (%)</label>
+                  <label className="text-sm font-medium mb-1.5 block">Stop Gain (R$)</label>
                   <input 
                     type="number"
-                    value={config.stopGainDailyPct}
-                    onChange={e => setConfig({...config, stopGainDailyPct: parseFloat(e.target.value)})}
+                    value={config.stopGain}
+                    onChange={e => setConfig({...config, stopGain: parseFloat(e.target.value)})}
                     className="w-full bg-surface-hover border border-border rounded px-3 py-1.5 font-mono"
                   />
                 </div>
 
                 <div className="bg-background border border-border/50 rounded-lg p-4">
-                  <label className="text-sm font-medium mb-1.5 block">Meta Mensal (%)</label>
+                  <label className="text-sm font-medium mb-1.5 block">Meta Mensal (R$)</label>
                   <input 
                     type="number"
-                    value={config.monthlyGoalPct}
-                    onChange={e => setConfig({...config, monthlyGoalPct: parseFloat(e.target.value)})}
+                    value={config.metaMensal}
+                    onChange={e => setConfig({...config, metaMensal: parseFloat(e.target.value)})}
                     className="w-full bg-surface-hover border border-border rounded px-3 py-1.5 font-mono"
                   />
                 </div>

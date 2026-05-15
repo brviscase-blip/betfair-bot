@@ -7,6 +7,7 @@ interface OpportunityCardProps {
   onApprove: (id: number) => void;
   onReject: (id: number) => void;
   isProcessing?: boolean;
+  key?: any;
 }
 
 export function OpportunityCard({ opportunity, onApprove, onReject, isProcessing = false }: OpportunityCardProps) {
@@ -48,17 +49,17 @@ export function OpportunityCard({ opportunity, onApprove, onReject, isProcessing
           <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Entrada</p>
           <p className="font-medium text-sm">
             <span className={cn("inline-block px-1.5 py-0.5 rounded text-[10px] font-bold mr-1.5", 
-              opportunity.betType === 'BACK' ? 'bg-primary/20 text-primary' : 'bg-pink-500/20 text-pink-500'
+              opportunity.bet_type === 'BACK' ? 'bg-primary/20 text-primary' : 'bg-pink-500/20 text-pink-500'
             )}>
-              {opportunity.betType}
+              {opportunity.bet_type}
             </span>
-            {opportunity.selection} @{opportunity.entryOdd.toFixed(2)}
+            {opportunity.selection} @{opportunity.entry_odd.toFixed(2)}
           </p>
         </div>
         
         <div className="bg-background rounded-lg p-3 border border-border/50">
           <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Cash Out Esperado</p>
-          <span className="font-mono text-text-secondary text-sm">quando odd ≤ {opportunity.cashOutTarget.toFixed(2)}</span>
+          <span className="font-mono text-text-secondary text-sm">quando odd ≤ {opportunity.cash_out_target.toFixed(2)}</span>
         </div>
 
         <div className="bg-background rounded-lg p-3 border border-border/50 col-span-2">
@@ -95,7 +96,7 @@ export function OpportunityCard({ opportunity, onApprove, onReject, isProcessing
       <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/50">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-text-muted">Valor / Lucro</p>
-            <p className="font-mono font-medium">{formatCurrency(opportunity.stake)} / {formatCurrency(opportunity.projectedProfit)}</p>
+            <p className="font-mono font-medium">{formatCurrency(opportunity.stake)} / {formatCurrency(opportunity.projected_profit)}</p>
           </div>
           
           <div className="flex gap-2">

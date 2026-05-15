@@ -3,14 +3,17 @@ export interface Bet {
   match: string;
   market: string;
   selection: string;
-  betType: 'BACK' | 'LAY';
+  bet_type: 'BACK' | 'LAY';
   stake: number;
-  entryOdd: number;
-  cashOutTarget: number;
-  projectedProfit: number;
-  currentOdd: number;
+  entry_odd: number;
+  cash_out_target: number;
+  projected_profit: number;
+  current_odd: number;
   status: 'OPEN' | 'WIN' | 'LOSS' | 'CASHOUT';
-  placedAt: string;
+  placed_at: string;
+  pnl: number;
+  close_odd?: number;
+  closed_at?: string;
 }
 
 export interface Research {
@@ -25,12 +28,12 @@ export interface Opportunity {
   startTime: string;
   market: string;
   selection: string;
-  betType: 'BACK' | 'LAY';
-  entryOdd: number;
-  exitOdd: number;
-  cashOutTarget: number;
+  bet_type: 'BACK' | 'LAY';
+  entry_odd: number;
+  exit_odd: number;
+  cash_out_target: number;
   stake: number;
-  projectedProfit: number;
+  projected_profit: number;
   confidence: number;
   reasoning: string;
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
@@ -66,7 +69,8 @@ export interface BotStatus {
 }
 
 export interface Config {
-  stopLossDailyPct: number;
-  stopGainDailyPct: number;
-  monthlyGoalPct: number;
+  stopLoss: number;
+  stopGain: number;
+  metaMensal: number;
+  banca: number;
 }

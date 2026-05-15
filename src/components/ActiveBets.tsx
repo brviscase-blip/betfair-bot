@@ -21,9 +21,9 @@ export function ActiveBets({ bets, onRefresh }: ActiveBetsProps) {
       <h2 className="text-xl font-display font-bold">Apostas Ativas</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {bets.map(bet => {
-          const profitOrLoss = (bet.stake * bet.entryOdd) - (bet.stake * bet.currentOdd);
+          const profitOrLoss = (bet.stake * bet.entry_odd) - (bet.stake * bet.current_odd);
           const profitColor = profitOrLoss > 0 ? 'text-success' : 'text-error';
-          const progress = Math.min(100, Math.max(0, ((bet.entryOdd - bet.currentOdd) / (bet.entryOdd - bet.cashOutTarget)) * 100));
+          const progress = Math.min(100, Math.max(0, ((bet.entry_odd - bet.current_odd) / (bet.entry_odd - bet.cash_out_target)) * 100));
 
           return (
             <div key={bet.id} className="bg-surface border border-border rounded-xl p-5 hover:border-primary/50 transition-colors">
@@ -34,9 +34,9 @@ export function ActiveBets({ bets, onRefresh }: ActiveBetsProps) {
               
               <div className="flex justify-between items-center mb-4">
                 <span className="text-sm">
-                   <span className="font-bold text-primary">{bet.betType}</span> {bet.selection}
+                   <span className="font-bold text-primary">{bet.bet_type}</span> {bet.selection}
                 </span>
-                <span className="font-mono text-primary font-bold">@{bet.currentOdd.toFixed(2)}</span>
+                <span className="font-mono text-primary font-bold">@{bet.current_odd.toFixed(2)}</span>
               </div>
 
               <div className="h-1.5 w-full bg-border rounded-full mb-4 overflow-hidden">
@@ -49,7 +49,7 @@ export function ActiveBets({ bets, onRefresh }: ActiveBetsProps) {
                     <p className="font-bold font-mono">{profitOrLoss > 0 ? '+' : ''}{formatCurrency(profitOrLoss)}</p>
                 </div>
                 <button 
-                  onClick={() => handleClose(bet.id, bet.currentOdd)}
+                  onClick={() => handleClose(bet.id, bet.current_odd)}
                   className="px-4 py-2 bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20 rounded-lg text-sm font-medium transition-colors"
                 >
                   Fechar Agora
