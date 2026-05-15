@@ -1,10 +1,11 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
+const ws = require('ws');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY,
-  { db: { schema: 'public' } }
+  { db: { schema: 'public' }, realtime: { transport: ws } }
 );
 
 // Inicializa as tabelas se não existirem
