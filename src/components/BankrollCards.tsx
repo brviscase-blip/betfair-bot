@@ -1,10 +1,10 @@
 import { formatCurrency } from '../lib/utils';
-import type { BankrollConfig } from '../types/api';
+import type { SimulationConfig } from '../types/api';
 import { DollarSign, TrendingUp, Target, ShieldAlert } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface BankrollCardsProps {
-  bankroll: BankrollConfig;
+  bankroll: SimulationConfig;
 }
 
 export function BankrollCards({ bankroll }: BankrollCardsProps) {
@@ -13,9 +13,6 @@ export function BankrollCards({ bankroll }: BankrollCardsProps) {
   
   const statusColor = bankroll.canBet.allowed ? 'text-success' : 'text-warning';
   const statusText = bankroll.canBet.allowed ? 'Operando' : bankroll.canBet.reason || 'Pausado';
-
-  // Calculate progress to goal
-  const progressPercent = Math.min(100, Math.max(0, ((bankroll.dailyPnL > 0 ? bankroll.dailyPnL : 0) / bankroll.monthlyGoal) * 100));
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -26,7 +23,7 @@ export function BankrollCards({ bankroll }: BankrollCardsProps) {
           <DollarSign className="w-16 h-16" />
         </div>
         <p className="text-text-secondary text-sm font-medium mb-1">Banca Atual</p>
-        <h3 className="font-display text-3xl font-bold">{formatCurrency(bankroll.current)}</h3>
+        <h3 className="font-display text-3xl font-bold">{formatCurrency(bankroll.banca)}</h3>
       </div>
 
       {/* Daily PnL */}
@@ -48,7 +45,7 @@ export function BankrollCards({ bankroll }: BankrollCardsProps) {
         <div className="flex justify-between items-start mb-2">
           <div>
             <p className="text-text-secondary text-sm font-medium mb-1">Meta Mensal</p>
-            <h3 className="font-display text-2xl font-bold">{formatCurrency(bankroll.monthlyGoal)}</h3>
+            <h3 className="font-display text-2xl font-bold">{formatCurrency(bankroll.metaMensal)}</h3>
           </div>
           <Target className="w-6 h-6 text-primary/50" />
         </div>
@@ -56,12 +53,12 @@ export function BankrollCards({ bankroll }: BankrollCardsProps) {
         <div className="mt-auto pt-2">
           <div className="flex justify-between text-xs font-mono text-text-muted mb-1">
             <span>Progresso</span>
-            <span>{progressPercent.toFixed(1)}%</span>
+            <span>{bankroll.progressMensal.toFixed(1)}%</span>
           </div>
           <div className="h-1.5 w-full bg-border rounded-full overflow-hidden">
             <div 
               className="h-full bg-primary transition-all duration-1000 ease-out relative"
-              style={{ width: `${progressPercent}%` }}
+              style={{ width: `${bankroll.progressMensal}%` }}
             >
               <div className="absolute inset-0 bg-white/20 animate-pulse" />
             </div>

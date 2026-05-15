@@ -28,7 +28,10 @@ export function Header({ botRunning, onRefresh, onToggleConfig }: HeaderProps) {
           <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
         </div>
         <div>
-          <h1 className="font-display font-bold text-2xl tracking-tight text-glow">BetBot AI</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display font-bold text-2xl tracking-tight text-glow">BetBot AI</h1>
+            <span className="bg-[#f59e0b] text-[10px] text-[#0a0f1e] font-bold px-2 py-0.5 rounded uppercase tracking-wider">SIMULAÇÃO</span>
+          </div>
           <p className="text-sm font-mono text-text-secondary">Terminal de Operações</p>
         </div>
       </div>

@@ -1,6 +1,5 @@
-import { Settings2, X, Percent, DollarSign } from 'lucide-react';
+import { Settings2, X, Percent, DollarSign, Save } from 'lucide-react';
 import type { Config } from '../types/api';
-import { formatCurrency } from '../lib/utils';
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 
@@ -11,12 +10,19 @@ interface ConfigPanelProps {
 
 export function ConfigPanel({ isOpen, onClose }: ConfigPanelProps) {
   const [config, setConfig] = useState<Config | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (isOpen && !config) {
+    if (isOpen) {
       api.getConfig().then(setConfig);
     }
-  }, [isOpen, config]);
+  }, [isOpen]);
+
+  const handleSave = async (updatedConfig: Config) => {
+    setIsSaving(true);
+    await api.updateConfig(updatedConfig);
+    setIsSaving(false);
+  };
 
   if (!isOpen) return null;
 
@@ -44,50 +50,44 @@ export function ConfigPanel({ isOpen, onClose }: ConfigPanelProps) {
               <div className="space-y-4">
                 <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Gestão de Risco</h3>
                 
-                <div className="bg-background border border-border/50 rounded-lg p-3">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-sm font-medium">Stop Loss Diário</label>
-                    <Percent className="w-3.5 h-3.5 text-text-muted" />
-                  </div>
-                  <div className="text-error font-mono font-bold text-lg">{config.stopLossDailyPct}%</div>
+                <div className="bg-background border border-border/50 rounded-lg p-4">
+                  <label className="text-sm font-medium mb-1.5 block">Stop Loss Diário (%)</label>
+                  <input 
+                    type="number"
+                    value={config.stopLossDailyPct}
+                    onChange={e => setConfig({...config, stopLossDailyPct: parseFloat(e.target.value)})}
+                    className="w-full bg-surface-hover border border-border rounded px-3 py-1.5 font-mono"
+                  />
                 </div>
 
-                <div className="bg-background border border-border/50 rounded-lg p-3">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-sm font-medium">Stop Gain Diário</label>
-                    <Percent className="w-3.5 h-3.5 text-text-muted" />
-                  </div>
-                  <div className="text-success font-mono font-bold text-lg">{config.stopGainDailyPct}%</div>
+                <div className="bg-background border border-border/50 rounded-lg p-4">
+                  <label className="text-sm font-medium mb-1.5 block">Stop Gain Diário (%)</label>
+                  <input 
+                    type="number"
+                    value={config.stopGainDailyPct}
+                    onChange={e => setConfig({...config, stopGainDailyPct: parseFloat(e.target.value)})}
+                    className="w-full bg-surface-hover border border-border rounded px-3 py-1.5 font-mono"
+                  />
                 </div>
 
-                <div className="bg-background border border-border/50 rounded-lg p-3">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-sm font-medium">Meta Mensal</label>
-                    <Percent className="w-3.5 h-3.5 text-text-muted" />
-                  </div>
-                  <div className="text-primary font-mono font-bold text-lg">{config.monthlyGoalPct}%</div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Operacional</h3>
-                
-                <div className="bg-background border border-border/50 rounded-lg p-3">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-sm font-medium">Stake Mínima</label>
-                    <DollarSign className="w-3.5 h-3.5 text-text-muted" />
-                  </div>
-                  <div className="text-text-primary font-mono font-bold text-lg">{formatCurrency(config.minStake)}</div>
-                  <p className="text-xs text-text-muted mt-1">Valor base sugerido para operações LOW risk.</p>
+                <div className="bg-background border border-border/50 rounded-lg p-4">
+                  <label className="text-sm font-medium mb-1.5 block">Meta Mensal (%)</label>
+                  <input 
+                    type="number"
+                    value={config.monthlyGoalPct}
+                    onChange={e => setConfig({...config, monthlyGoalPct: parseFloat(e.target.value)})}
+                    className="w-full bg-surface-hover border border-border rounded px-3 py-1.5 font-mono"
+                  />
                 </div>
               </div>
 
-              <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg mt-8">
-                <p className="text-[13px] text-primary/80 text-center">
-                  A edição de parâmetros está desabilitada no modo de visualização. Altere diretamente na VPS.
-                </p>
-              </div>
-
+              <button
+                onClick={() => handleSave(config)}
+                disabled={isSaving}
+                className="w-full bg-primary text-surface font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {isSaving ? 'Salvando...' : <><Save className="w-4 h-4" /> Salvar Configurações</>}
+              </button>
             </div>
           ) : (
             <div className="flex justify-center py-10">

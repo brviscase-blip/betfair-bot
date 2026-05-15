@@ -1,28 +1,40 @@
 export interface Bet {
   id: number;
   match: string;
+  market: string;
   selection: string;
   betType: 'BACK' | 'LAY';
   stake: number;
-  odd: number;
-  status: 'OPEN' | 'WIN' | 'LOSS';
-  pnl: number;
-  timestamp: string;
+  entryOdd: number;
+  cashOutTarget: number;
+  projectedProfit: number;
+  currentOdd: number;
+  status: 'OPEN' | 'WIN' | 'LOSS' | 'CASHOUT';
+  placedAt: string;
+}
+
+export interface Research {
+  homeForm: string;
+  awayForm: string;
+  keyInfo: string;
 }
 
 export interface Opportunity {
   id: number;
   match: string;
   startTime: string;
+  market: string;
   selection: string;
   betType: 'BACK' | 'LAY';
-  targetOdd: number;
+  entryOdd: number;
   exitOdd: number;
+  cashOutTarget: number;
   stake: number;
+  projectedProfit: number;
   confidence: number;
   reasoning: string;
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
-  approved: boolean;
+  research: Research;
   timestamp: string;
 }
 
@@ -32,20 +44,23 @@ export interface LogEntry {
   type: 'success' | 'warn' | 'error' | 'info';
 }
 
-export interface BankrollConfig {
-  current: number;
+export interface SimulationConfig {
+  banca: number;
   dailyPnL: number;
   totalPnL: number;
-  monthlyGoal: number;
+  metaMensal: number;
+  progressMensal: number;
+  stopLoss: number;
+  stopGain: number;
   canBet: { allowed: boolean; reason?: string };
-  openBets: Bet[];
+  activeBets: Bet[];
   recentBets: Bet[];
 }
 
 export interface BotStatus {
   botRunning: boolean;
   lastScan: string;
-  bankroll: BankrollConfig;
+  simulation: SimulationConfig;
   pendingOpportunities: Opportunity[];
   log: LogEntry[];
 }
@@ -54,5 +69,4 @@ export interface Config {
   stopLossDailyPct: number;
   stopGainDailyPct: number;
   monthlyGoalPct: number;
-  minStake: number;
 }

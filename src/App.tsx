@@ -5,6 +5,7 @@ import { Header } from './components/Header';
 import { BankrollCards } from './components/BankrollCards';
 import { OpportunityCard } from './components/OpportunityCard';
 import { BetsTable } from './components/BetsTable';
+import { ActiveBets } from './components/ActiveBets';
 import { SystemLog } from './components/SystemLog';
 import { ConfigPanel } from './components/ConfigPanel';
 import { Activity, AlertCircle } from 'lucide-react';
@@ -79,65 +80,53 @@ export default function App() {
           onToggleConfig={() => setIsConfigOpen(true)}
         />
         
-        <BankrollCards bankroll={status.bankroll} />
+        <BankrollCards bankroll={status.simulation} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           
-          {/* Main Content Area (Opportunities) */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-display font-bold flex items-center gap-2">
+          <div className="lg:col-span-2 space-y-8">
+            
+            {status.simulation.activeBets.length > 0 && (
+                <ActiveBets bets={status.simulation.activeBets} onRefresh={refetch} />
+            )}
+
+            <div>
+              <h2 className="text-xl font-display font-bold flex items-center gap-2 mb-4">
                 Oportunidades Pendentes
                 <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full font-mono">
                   {status.pendingOpportunities.length}
                 </span>
               </h2>
+              
+              {status.pendingOpportunities.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {status.pendingOpportunities.map(opp => (
+                    <OpportunityCard 
+                      key={opp.id} 
+                      opportunity={opp} 
+                      onApprove={handleApprove}
+                      onReject={handleReject}
+                      isProcessing={processingIds.has(opp.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-surface/50 border border-border rounded-xl p-12 text-center flex flex-col items-center justify-center">
+                  <Activity className="w-8 h-8 text-text-muted mb-4" />
+                  <p className="text-text-secondary font-medium">Nenhuma oportunidade encontrada.</p>
+                  <p className="text-text-muted text-sm mt-1">Aguardando próximo scan do mercado...</p>
+                </div>
+              )}
             </div>
-            
-            {status.pendingOpportunities.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {status.pendingOpportunities.map(opp => (
-                  <OpportunityCard 
-                    key={opp.id} 
-                    opportunity={opp} 
-                    onApprove={handleApprove}
-                    onReject={handleReject}
-                    isProcessing={processingIds.has(opp.id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="bg-surface/50 border border-border rounded-xl p-12 text-center flex flex-col items-center justify-center">
-                <Activity className="w-8 h-8 text-text-muted mb-4" />
-                <p className="text-text-secondary font-medium">Nenhuma oportunidade encontrada.</p>
-                <p className="text-text-muted text-sm mt-1">Aguardando próximo scan do mercado...</p>
-              </div>
-            )}
 
-            <div className="pt-6">
-              <h2 className="text-xl font-display font-bold mb-4">Apostas Recentes</h2>
-              <BetsTable bets={status.bankroll.recentBets} />
+            <div>
+              <h2 className="text-xl font-display font-bold mb-4">Histórico de Apostas</h2>
+              <BetsTable bets={status.simulation.recentBets} />
             </div>
           </div>
 
-          {/* Sidebar Area (Logs) */}
           <div className="space-y-6">
             <SystemLog logs={status.log} />
-            
-            {/* Quick Stats or Additional info could go here */}
-            {status.bankroll.openBets.length > 0 && (
-               <div className="bg-surface border border-border rounded-xl p-5">
-                 <h3 className="font-display font-medium text-sm text-text-secondary uppercase tracking-wider mb-4">Apostas Abertas ({status.bankroll.openBets.length})</h3>
-                 <div className="space-y-3">
-                   {status.bankroll.openBets.map(bet => (
-                     <div key={bet.id} className="flex justify-between items-center text-sm border-b border-border/50 pb-2 last:border-0 last:pb-0">
-                       <span className="font-medium truncate pr-4">{bet.match}</span>
-                       <span className="font-mono text-primary">@{bet.odd.toFixed(2)}</span>
-                     </div>
-                   ))}
-                 </div>
-               </div>
-            )}
           </div>
         </div>
       </div>

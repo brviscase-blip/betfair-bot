@@ -23,6 +23,8 @@ export function BetsTable({ bets }: BetsTableProps) {
         return <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-success/20 text-success border border-success/30">WIN</span>;
       case 'LOSS':
         return <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-error/20 text-error border border-error/30">LOSS</span>;
+      case 'CASHOUT':
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-warning/20 text-warning border border-warning/30">CASHOUT</span>;
     }
   };
 
@@ -35,16 +37,19 @@ export function BetsTable({ bets }: BetsTableProps) {
               <th className="px-4 py-3 font-medium">Horário</th>
               <th className="px-4 py-3 font-medium">Jogo</th>
               <th className="px-4 py-3 font-medium">Seleção</th>
-              <th className="px-4 py-3 font-medium">Odd</th>
+              <th className="px-4 py-3 font-medium">Odd Entrada</th>
+              <th className="px-4 py-3 font-medium">Odd Saída</th>
               <th className="px-4 py-3 font-medium">Stake</th>
               <th className="px-4 py-3 font-medium text-center">Status</th>
-              <th className="px-4 py-3 font-medium text-right">P&L</th>
+              <th className="px-4 py-3 font-medium text-right">Proj. P&L</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/20">
-            {bets.map((bet) => (
+            {bets.map((bet) => {
+              const pnl = (bet.stake * bet.entryOdd) - (bet.stake * bet.currentOdd);
+              return (
               <tr key={bet.id} className="hover:bg-surface-hover/30 transition-colors">
-                <td className="px-4 py-3 font-mono text-text-secondary whitespace-nowrap">{formatTime(bet.timestamp)}</td>
+                <td className="px-4 py-3 font-mono text-text-secondary whitespace-nowrap">{formatTime(bet.placedAt)}</td>
                 <td className="px-4 py-3 font-medium whitespace-nowrap">{bet.match}</td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <span className={cn("inline-block px-1.5 py-0.5 rounded text-[10px] font-bold mr-1.5", 
@@ -54,17 +59,19 @@ export function BetsTable({ bets }: BetsTableProps) {
                   </span>
                   {bet.selection}
                 </td>
-                <td className="px-4 py-3 font-mono">@{bet.odd.toFixed(2)}</td>
+                <td className="px-4 py-3 font-mono">@{bet.entryOdd.toFixed(2)}</td>
+                <td className="px-4 py-3 font-mono">@{bet.currentOdd.toFixed(2)}</td>
                 <td className="px-4 py-3 font-mono text-text-secondary">{formatCurrency(bet.stake)}</td>
                 <td className="px-4 py-3 text-center">{getStatusBadge(bet.status)}</td>
                 <td className={cn(
                   "px-4 py-3 font-mono text-right font-medium",
-                  bet.pnl > 0 ? "text-success" : bet.pnl < 0 ? "text-error" : "text-text-muted"
+                  pnl > 0 ? "text-success" : pnl < 0 ? "text-error" : "text-text-muted"
                 )}>
-                  {bet.pnl > 0 ? '+' : ''}{bet.pnl !== 0 ? formatCurrency(bet.pnl) : '-'}
+                  {pnl > 0 ? '+' : ''}{pnl !== 0 ? formatCurrency(pnl) : '-'}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
