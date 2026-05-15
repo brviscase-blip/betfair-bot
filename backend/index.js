@@ -21,6 +21,7 @@ app.use(express.json());
 let botRunning = false;
 let lastScan = null;
 let pendingOpportunities = [];
+const analyzedMarkets = new Map();
 let botLog = [];
 
 function log(msg, type = 'info') {
@@ -29,8 +30,6 @@ function log(msg, type = 'info') {
   if (botLog.length > 100) botLog.pop();
   console.log(`[${type.toUpperCase()}] ${msg}`);
 }
-
-// ─── HELPERS ────────────────────────────────────────────────────
 
 async function canBet(sim) {
   const today = new Date().toDateString();
@@ -65,8 +64,6 @@ async function getStatus() {
   };
 }
 
-// ─── ROTAS ──────────────────────────────────────────────────────
-
 app.get('/api/status', async (req, res) => {
   try {
     res.json({
@@ -82,6 +79,9 @@ app.get('/api/status', async (req, res) => {
 
 app.post('/api/bot/toggle', async (req, res) => {
   botRunning = !botRunning;
+  const sim2 = await getSimState();
+  sim2.botRunning = botRunning;
+  await setSimState(sim2);
   log(`Bot ${botRunning ? 'LIGADO' : 'DESLIGADO'}`, botRunning ? 'success' : 'warn');
   await sendMessage(`🤖 Bot ${botRunning ? '✅ LIGADO' : '⛔ DESLIGADO'}`);
   if (botRunning) scanMarkets();
@@ -97,22 +97,15 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// Aprovar oportunidade
 async function approveOpportunity(oppId) {
   const opp = pendingOpportunities.find(o => o.id === oppId);
   if (!opp) return { success: false, error: 'Oportunidade não encontrada' };
-
   const sim = await getSimState();
   const check = await canBet(sim);
   if (!check.allowed) return { success: false, error: check.reason };
-
-  // Registra no Supabase
   await insertBet(opp);
-
-  // Atualiza banca
   sim.banca -= opp.stake;
   await setSimState(sim);
-
   pendingOpportunities = pendingOpportunities.filter(o => o.id !== oppId);
   log(`✅ Aposta simulada: ${opp.match} | ${opp.selection} @ ${opp.entryOdd} | R$${opp.stake}`, 'success');
   return { success: true };
@@ -135,7 +128,6 @@ app.post('/api/bet/close/:id', async (req, res) => {
   const activeBets = await getActiveBets();
   const bet = activeBets.find(b => b.id === betId);
   if (!bet) return res.status(404).json({ error: 'Aposta não encontrada' });
-
   let pnl = 0;
   if (result === 'WIN' || result === 'CASHOUT') {
     const gross = bet.stake * ((closeOdd || bet.exit_odd) - 1);
@@ -143,9 +135,7 @@ app.post('/api/bet/close/:id', async (req, res) => {
   } else {
     pnl = -bet.stake;
   }
-
   await updateBet(betId, { status: result, pnl, closed_at: new Date().toISOString(), close_odd: closeOdd });
-
   const sim = await getSimState();
   sim.banca += bet.stake + pnl;
   sim.dailyPnL += pnl;
@@ -153,7 +143,6 @@ app.post('/api/bet/close/:id', async (req, res) => {
   await setSimState(sim);
   await insertHistory({ match: bet.match, market: bet.market, selection: bet.selection, betType: bet.bet_type, odd: closeOdd || bet.exit_odd, stake: bet.stake, pnl, result });
   await sendCashOutAlert(bet, pnl);
-
   log(`Aposta encerrada: ${bet.match} | ${result} | R$${pnl}`, pnl >= 0 ? 'success' : 'error');
   res.json({ success: true, pnl });
 });
@@ -172,35 +161,33 @@ app.post('/api/config', async (req, res) => {
   res.json({ success: true });
 });
 
-// ─── LÓGICA DO BOT ──────────────────────────────────────────────
-
 async function scanMarkets() {
   log('🔍 Iniciando scan de mercados...');
   lastScan = new Date().toISOString();
-
   const sim = await getSimState();
   const check = await canBet(sim);
   if (!check.allowed) { log(`⛔ ${check.reason}`, 'warn'); return; }
-
   const markets = await getFootballMarkets();
+  if (markets.length === 0) { log('Sem mercados disponíveis, pulando análise IA'); return; }
   log(`📋 ${markets.length} mercados encontrados`);
-
   const history = await getHistory(20);
   const learningContext = history.length > 0
     ? `Histórico: ${history.filter(h => h.result === 'WIN').length} vitórias, ${history.filter(h => h.result === 'LOSS').length} derrotas nas últimas ${history.length} apostas.`
     : 'Sem histórico ainda.';
-
   for (const market of markets.slice(0, 5)) {
     try {
+      const lastAnalyzed = analyzedMarkets.get(market.marketId);
+      if (lastAnalyzed && Date.now() - lastAnalyzed < 2 * 60 * 60 * 1000) {
+        log(`⏭️ ${market.event.name}: já analisado, pulando`);
+        continue;
+      }
+      analyzedMarkets.set(market.marketId, Date.now());
       const odds = await getMarketOdds(market.marketId);
       if (!odds?.runners?.length) continue;
-
       const teams = market.event.name.split(' v ');
       const research = teams.length === 2 ? await researchMatch(teams[0].trim(), teams[1].trim()) : {};
-
       const analysis = await analyzeMatch(market, odds, research, learningContext);
-      log(`🤖 ${market.event.name}: ${analysis.shouldBet ? `✅ ${analysis.market} @ ${analysis.entryOdd}` : '❌'} (${analysis.confidence}%)`);
-
+      log(`🤖 ${market.event.name}: ${analysis.shouldBet ? `✅ ${analysis.market} @ ${analysis.entryOdd}` : `❌ ${analysis.reasoning}`} (${analysis.confidence}%)`);
       if (analysis.shouldBet && analysis.confidence >= 65 && analysis.entryOdd >= 2.0) {
         const opp = {
           id: Date.now() + Math.random(),
@@ -223,21 +210,16 @@ async function scanMarkets() {
         };
         pendingOpportunities.push(opp);
         log(`💡 Oportunidade: ${opp.match} | ${opp.selection} @ ${opp.entryOdd} | R$${opp.projectedProfit}`, 'success');
-
-        // Envia alerta no Telegram
         await sendOpportunityAlert(opp);
       }
     } catch (err) {
       log(`Erro ao analisar ${market.event.name}: ${err.message}`, 'error');
     }
   }
-
-  // Remove oportunidades antigas (>3h)
   const threeHoursAgo = Date.now() - 3 * 60 * 60 * 1000;
   pendingOpportunities = pendingOpportunities.filter(o => new Date(o.timestamp).getTime() > threeHoursAgo);
 }
 
-// Monitoramento de apostas ativas a cada 2 minutos
 cron.schedule('*/2 * * * *', async () => {
   const activeBets = await getActiveBets();
   for (const bet of activeBets) {
@@ -248,14 +230,8 @@ cron.schedule('*/2 * * * *', async () => {
       if (!runner) continue;
       const currentOdd = runner.ex?.availableToBack?.[0]?.price;
       if (!currentOdd) continue;
-
       await updateBet(bet.id, { current_odd: currentOdd });
-
-      // Cash out automático
-      const shouldCashOut = bet.bet_type === 'BACK'
-        ? currentOdd <= bet.cash_out_target
-        : currentOdd >= bet.cash_out_target;
-
+      const shouldCashOut = bet.bet_type === 'BACK' ? currentOdd <= bet.cash_out_target : currentOdd >= bet.cash_out_target;
       if (shouldCashOut) {
         const gross = bet.stake * (currentOdd - 1);
         const pnl = parseFloat((gross * 0.95).toFixed(2));
@@ -275,7 +251,6 @@ cron.schedule('*/2 * * * *', async () => {
   }
 });
 
-// Polling Telegram a cada 3 segundos
 cron.schedule('*/3 * * * * *', async () => {
   await pollUpdates(async (callbackQuery) => {
     await processCallback(callbackQuery, pendingOpportunities, approveOpportunity, (id) => {
@@ -284,19 +259,15 @@ cron.schedule('*/3 * * * * *', async () => {
   });
 });
 
-// Scan automático a cada 30 minutos
 cron.schedule('*/30 * * * *', async () => {
   if (botRunning) await scanMarkets();
 });
 
-// Resumo diário às 23:55
 cron.schedule('55 23 * * *', async () => {
   const sim = await getSimState();
   const progressMensal = ((sim.totalPnL / sim.metaMensal) * 100).toFixed(1);
   await sendDailySummary({ ...sim, progressMensal });
 });
-
-// ─── START ───────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, async () => {
@@ -304,8 +275,10 @@ app.listen(PORT, async () => {
   try {
     await initDB();
     await login();
-    log('Sistema iniciado — Modo Simulação + Supabase + Telegram ativo', 'success');
-    await sendMessage('🚀 *BetBot AI iniciado!*\nModo Simulação ativo. Aguardando oportunidades...');
+    const sim = await getSimState();
+    botRunning = sim.botRunning || false;
+    log(`Sistema iniciado — Bot ${botRunning ? 'LIGADO' : 'DESLIGADO'}`, 'success');
+    await sendMessage(`🚀 *BetBot AI iniciado!*\nBot ${botRunning ? '✅ LIGADO' : '⏸ PAUSADO'}\nModo Simulação ativo.`);
   } catch (err) {
     log(`Erro ao iniciar: ${err.message}`, 'error');
   }
