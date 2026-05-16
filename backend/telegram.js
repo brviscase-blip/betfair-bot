@@ -35,7 +35,8 @@ function buildPredictionCard(p) {
   const oddsEntries = Object.entries(allOdds)
     .map(([house, o]) => ({ house, odd: o[predKey] }))
     .filter(e => e.odd != null)
-    .sort((a, b) => b.odd - a.odd);
+    .sort((a, b) => b.odd - a.odd)
+    .slice(0, 5);
 
   let oddsLines = '';
   if (oddsEntries.length > 0) {
