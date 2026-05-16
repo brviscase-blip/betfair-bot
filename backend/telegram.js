@@ -101,4 +101,18 @@ async function pollUpdates(handler) {
   }
 }
 
-module.exports = { sendMessage, sendDailyReport, pollUpdates };
+async function sendCalibrationReport(calibration) {
+  if (!calibration) return;
+  const { notes, overall_win_rate, sample_size, period_days } = calibration;
+  const winPct = (overall_win_rate * 100).toFixed(1);
+  const noteLines = notes.map(n => `• ${n}`).join('\n');
+  const text =
+    `🧠 *Calibração Semanal — BetBot AI*\n\n` +
+    `📊 *Desempenho (últimos ${period_days} dias):*\n` +
+    `✅ Win rate: *${winPct}%* em ${sample_size} apostas\n\n` +
+    `📝 *Ajustes identificados pelo Sonnet:*\n${noteLines}\n\n` +
+    `_Esses aprendizados já estão sendo aplicados na próxima análise._`;
+  await sendMessage(text);
+}
+
+module.exports = { sendMessage, sendDailyReport, sendCalibrationReport, pollUpdates };

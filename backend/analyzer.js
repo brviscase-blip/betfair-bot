@@ -1,6 +1,7 @@
 require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
 const { formatOddsForMatch, getBestOdds } = require('./odds');
+const { getLatestCalibration } = require('./db');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -17,6 +18,8 @@ function buildMovementBlock(movements) {
 
 async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {}, weatherMap = {}) {
   if (!matches || matches.length === 0) return [];
+
+  const calibration = await getLatestCalibration();
 
   const matchList = matches.map((m, i) => {
     const oddsMap = formatOddsForMatch(m);
@@ -71,7 +74,12 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {},
 ${oddsLines}${dataBlock}`;
   }).join('\n\n');
 
+  const calibrationBlock = calibration
+    ? `\nCALIBRAÇÃO HISTÓRICA (aprendizado baseado nos seus resultados reais — aplique obrigatoriamente):\n${calibration.notes.map(n => `  • ${n}`).join('\n')}\nWin rate atual: ${(calibration.overall_win_rate * 100).toFixed(1)}% em ${calibration.sample_size} apostas (${calibration.period_days} dias)\n`
+    : '';
+
   const prompt = `Você é um analista esportivo profissional especialista em futebol. Analise cada jogo com profundidade máxima usando TODOS os dados fornecidos.
+${calibrationBlock}
 
 CRITÉRIOS DE ANÁLISE (em ordem de importância):
 1. FORMA CASA/FORA: é mais decisiva que a forma geral — um visitante com DDDDD fora não merece apoio independente das odds
@@ -129,6 +137,7 @@ Responda APENAS com JSON válido:
           best_odd: best.odd,
           all_odds: allOdds,
           sport_title: match?.sport_title || null,
+          sport_key: match?.sport_key || null,
           commence_time: match?.commence_time || null,
         };
       });

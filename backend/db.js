@@ -43,6 +43,7 @@ async function insertPrediction(prediction) {
     best_odd: prediction.best_odd,
     all_odds: prediction.all_odds,
     sport_title: prediction.sport_title || null,
+    sport_key: prediction.sport_key || null,
     commence_time: prediction.commence_time || null,
     result: 'PENDING',
     created_at: new Date().toISOString(),
@@ -86,6 +87,37 @@ async function analysisAlreadyDoneToday() {
     .select('id', { count: 'exact', head: true })
     .eq('date', today);
   return (count || 0) > 0;
+}
+
+async function getPendingPredictions() {
+  const since = new Date();
+  since.setDate(since.getDate() - 3);
+  const { data } = await supabase
+    .from('betbot_predictions')
+    .select('*')
+    .eq('result', 'PENDING')
+    .gte('date', since.toISOString().split('T')[0]);
+  return data || [];
+}
+
+// ─── Calibração semanal ───────────────────────────────────────────────────────
+
+async function saveCalibration(report) {
+  await supabase.from('betbot_calibrations').insert({
+    date: new Date().toISOString().split('T')[0],
+    report,
+    created_at: new Date().toISOString(),
+  });
+}
+
+async function getLatestCalibration() {
+  const { data } = await supabase
+    .from('betbot_calibrations')
+    .select('report')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+  return data?.report || null;
 }
 
 // ─── Snapshots de odds (rastreamento de movimentação) ────────────────────────
@@ -146,9 +178,12 @@ module.exports = {
   setSimState,
   insertPrediction,
   getTodaysPredictions,
+  getPendingPredictions,
   updatePredictionResult,
   getPredictionHistory,
   analysisAlreadyDoneToday,
   saveOddsSnapshot,
   getOddsMovement,
+  saveCalibration,
+  getLatestCalibration,
 };

@@ -7,7 +7,9 @@ const { analyzeTodaysMatches } = require('./analyzer');
 const { getMatchStats } = require('./stats');
 const { researchMatch } = require('./researcher');
 const { getWeather } = require('./weather');
-const { sendMessage, sendDailyReport } = require('./telegram');
+const { sendMessage, sendDailyReport, sendCalibrationReport } = require('./telegram');
+const { checkDailyResults } = require('./results');
+const { runWeeklyCalibration } = require('./calibrator');
 const {
   initDB, getSimState, setSimState,
   insertPrediction, getTodaysPredictions,
@@ -15,6 +17,7 @@ const {
   analysisAlreadyDoneToday,
   saveOddsSnapshot, getOddsMovement,
 } = require('./db');
+
 
 const app = express();
 app.use(cors());
@@ -135,6 +138,24 @@ async function runDailyAnalysis({ force = false } = {}) {
 cron.schedule('0 6 * * *',  () => runDailyAnalysis());           // Análise principal
 cron.schedule('0 14 * * *', () => takeOddsSnapshot('afternoon')); // Snapshot tarde
 cron.schedule('0 18 * * *', () => takeOddsSnapshot('evening'));   // Snapshot noite
+cron.schedule('0 23 * * *', async () => {                         // Verifica resultados
+  try {
+    const count = await checkDailyResults();
+    if (count > 0) log(`✅ ${count} resultado(s) verificado(s) automaticamente`, 'success');
+  } catch (err) { log(`Erro ao verificar resultados: ${err.message}`, 'error'); }
+});
+cron.schedule('0 22 * * 0', async () => {                         // Calibração semanal (domingo)
+  try {
+    log('🧠 Iniciando calibração semanal...', 'info');
+    const calibration = await runWeeklyCalibration();
+    if (calibration) {
+      await sendCalibrationReport(calibration);
+      log(`🧠 Calibração concluída — win rate ${(calibration.overall_win_rate * 100).toFixed(1)}%`, 'success');
+    } else {
+      log('Calibração pulada — dados insuficientes (mínimo 10 apostas resolvidas)', 'warn');
+    }
+  } catch (err) { log(`Erro na calibração: ${err.message}`, 'error'); }
+});
 
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
