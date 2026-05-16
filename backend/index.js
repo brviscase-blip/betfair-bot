@@ -29,11 +29,13 @@ function log(msg, type = 'info') {
 
 // ─── Análise diária ──────────────────────────────────────────────────────────
 
-async function runDailyAnalysis() {
+async function runDailyAnalysis({ force = false } = {}) {
   if (!botRunning) { log('Bot pausado, análise cancelada', 'warn'); return; }
 
-  const alreadyDone = await analysisAlreadyDoneToday();
-  if (alreadyDone) { log('Análise já feita hoje, pulando', 'info'); return; }
+  if (!force) {
+    const alreadyDone = await analysisAlreadyDoneToday();
+    if (alreadyDone) { log('Análise já feita hoje, pulando', 'info'); return; }
+  }
 
   log('🔍 Iniciando análise diária...', 'info');
   lastAnalysis = new Date().toISOString();
@@ -100,7 +102,7 @@ app.post('/api/bot/toggle', async (req, res) => {
 
 app.post('/api/analyze', async (req, res) => {
   try {
-    await runDailyAnalysis();
+    await runDailyAnalysis({ force: true });
     const predictions = await getTodaysPredictions();
     res.json({ success: true, predictions });
   } catch (err) {
