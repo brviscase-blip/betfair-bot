@@ -1,76 +1,40 @@
-export interface Bet {
+export interface Prediction {
   id: number;
+  date: string;
   match: string;
-  market: string;
-  selection: string;
-  bet_type: 'BACK' | 'LAY';
-  stake: number;
-  entry_odd: number;
-  cash_out_target: number;
-  projected_profit: number;
-  current_odd: number;
-  status: 'OPEN' | 'WIN' | 'LOSS' | 'CASHOUT';
-  placed_at: string;
-  pnl: number;
-  close_odd?: number;
-  closed_at?: string;
-}
-
-export interface Research {
-  homeForm: string;
-  awayForm: string;
-  keyInfo: string;
-}
-
-export interface Opportunity {
-  id: number;
-  match: string;
-  startTime: string;
-  market: string;
-  selection: string;
-  bet_type: 'BACK' | 'LAY';
-  entry_odd: number;
-  exit_odd: number;
-  cash_out_target: number;
-  stake: number;
-  projected_profit: number;
+  home_team: string;
+  away_team: string;
+  prediction: 'HOME' | 'DRAW' | 'AWAY';
   confidence: number;
   reasoning: string;
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
-  research: Research;
-  timestamp: string;
+  best_house: string | null;
+  best_odd: number | null;
+  all_odds: Record<string, { home: number | null; draw: number | null; away: number | null }>;
+  result: 'WIN' | 'LOSS' | 'PENDING';
+  created_at: string;
+}
+
+export interface HistoryStats {
+  total: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+}
+
+export interface HistoryResponse {
+  history: Prediction[];
+  stats: HistoryStats;
+}
+
+export interface BotStatus {
+  botRunning: boolean;
+  lastAnalysis: string | null;
+  totalToday: number;
+  log: LogEntry[];
 }
 
 export interface LogEntry {
   timestamp: string;
   msg: string;
   type: 'success' | 'warn' | 'error' | 'info';
-}
-
-export interface SimulationConfig {
-  banca: number;
-  dailyPnL: number;
-  totalPnL: number;
-  metaMensal: number;
-  progressMensal: number;
-  stopLoss: number;
-  stopGain: number;
-  canBet: { allowed: boolean; reason?: string };
-  activeBets: Bet[];
-  recentBets: Bet[];
-}
-
-export interface BotStatus {
-  botRunning: boolean;
-  lastScan: string;
-  simulation: SimulationConfig;
-  pendingOpportunities: Opportunity[];
-  log: LogEntry[];
-}
-
-export interface Config {
-  stopLoss: number;
-  stopGain: number;
-  metaMensal: number;
-  banca: number;
 }
