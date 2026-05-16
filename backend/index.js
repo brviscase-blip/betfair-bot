@@ -4,6 +4,7 @@ const cors = require('cors');
 const cron = require('node-cron');
 const { getTodaysMatches } = require('./odds');
 const { analyzeTodaysMatches } = require('./analyzer');
+const { getMatchStats } = require('./stats');
 const { researchMatch } = require('./researcher');
 const { sendMessage, sendDailyReport } = require('./telegram');
 const {
@@ -48,15 +49,25 @@ async function runDailyAnalysis({ force = false } = {}) {
     return;
   }
 
-  log(`📋 ${matches.length} jogos encontrados — pesquisando dados reais...`, 'info');
+  log(`📋 ${matches.length} jogos encontrados — buscando estatísticas reais...`, 'info');
 
-  const researchResults = await Promise.all(
-    matches.map(m => researchMatch(m.home_team, m.away_team))
-  );
   const researchMap = {};
-  matches.forEach((m, i) => {
-    if (researchResults[i]) researchMap[`${m.home_team}|${m.away_team}`] = researchResults[i];
-  });
+  for (const m of matches) {
+    const key = `${m.home_team}|${m.away_team}`;
+    // Tenta API football-data.org primeiro
+    let stats = await getMatchStats(m.home_team, m.away_team, m.sport_key);
+    if (stats) {
+      researchMap[key] = stats;
+      log(`📊 [API] ${m.home_team} x ${m.away_team}`, 'info');
+    } else {
+      // Fallback: busca web via Claude (cobre ligas não disponíveis na API)
+      const web = await researchMatch(m.home_team, m.away_team);
+      if (web) {
+        researchMap[key] = web;
+        log(`🌐 [Web] ${m.home_team} x ${m.away_team}`, 'info');
+      }
+    }
+  }
 
   const researched = Object.keys(researchMap).length;
   log(`🔎 ${researched}/${matches.length} jogos com dados reais — analisando...`, 'info');
