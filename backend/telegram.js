@@ -102,12 +102,26 @@ async function pollUpdates(handler) {
   }
 }
 
+async function drainPendingUpdates() {
+  // Descarta todas as mensagens acumuladas antes do bot iniciar
+  try {
+    const { data } = await axios.get(`${BASE}/getUpdates`, {
+      params: { offset: -1, timeout: 0 },
+    });
+    if (data.result?.length > 0) {
+      lastUpdateId = data.result[data.result.length - 1].update_id;
+    }
+  } catch {
+    // silencioso
+  }
+}
+
 function startPolling(handler) {
   const loop = async () => {
     await pollUpdates(handler);
     setTimeout(loop, 1000);
   };
-  loop();
+  drainPendingUpdates().then(loop);
 }
 
 async function sendCalibrationReport(calibration) {
