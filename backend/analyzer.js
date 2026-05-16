@@ -4,7 +4,18 @@ const { formatOddsForMatch, getBestOdds } = require('./odds');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-async function analyzeTodaysMatches(matches, researchMap = {}) {
+const SIDE_LABEL = { home: 'mandante', draw: 'empate', away: 'visitante' };
+
+function buildMovementBlock(movements) {
+  if (!movements?.length) return '';
+  const lines = movements.map(mv => {
+    const dir = mv.pct > 0 ? '📈' : '📉';
+    return `    ${dir} ${mv.house} — ${SIDE_LABEL[mv.side] || mv.side}: ${mv.initial} → ${mv.current} (${mv.pct > 0 ? '+' : ''}${mv.pct}%)`;
+  }).join('\n');
+  return `\n  ⚠️ MOVIMENTAÇÃO DE MERCADO (vs abertura):\n${lines}`;
+}
+
+async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {}) {
   if (!matches || matches.length === 0) return [];
 
   const matchList = matches.map((m, i) => {
@@ -16,48 +27,59 @@ async function analyzeTodaysMatches(matches, researchMap = {}) {
     const time = new Date(m.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const key = `${m.home_team}|${m.away_team}`;
     const r = researchMap[key];
+    const mv = movementMap[key];
 
     let dataBlock = '';
     if (r) {
       dataBlock = `
   📊 DADOS REAIS:
     ${m.home_team} (MANDANTE):
-      Forma geral (últ 5):  ${r.homeForm || 'N/A'}
-      Forma em CASA (últ 5): ${r.homeFormHome || r.homeForm || 'N/A'}
-      Posição na tabela:    ${r.homePosition || 'N/A'}
-      Gols marcados/jogo:   ${r.homeGoalsAvg ?? 'N/A'}
-      Gols sofridos/jogo:   ${r.homeGoalsConceded ?? 'N/A'}
-      Clean sheets:         ${r.homeCleanSheets || 'N/A'}
-      Motivação:            ${r.homeMotivation || 'N/A'}
-      Lesões/Suspensos:     ${r.homeInjuries || 'N/A'}
+      Forma geral últ.5:     ${r.homeForm || 'N/A'}
+      Forma em CASA últ.5:   ${r.homeFormHome || 'N/A'}
+      Posição na tabela:     ${r.homePosition || 'N/A'}
+      Gols marcados/jogo:    ${r.homeGoalsAvg ?? 'N/A'}
+      Gols sofridos/jogo:    ${r.homeGoalsConceded ?? 'N/A'}
+      xG médio/jogo:         ${r.homeXG || 'N/A'}
+      Clean sheets (últ.10): ${r.homeCleanSheets || 'N/A'}
+      Motivação:             ${r.homeMotivation || 'N/A'}
+      Lesões/Suspensos:      ${r.homeInjuries || 'Nenhum conhecido'}
 
     ${m.away_team} (VISITANTE):
-      Forma geral (últ 5):  ${r.awayForm || 'N/A'}
-      Forma FORA (últ 5):   ${r.awayFormAway || r.awayForm || 'N/A'}
-      Posição na tabela:    ${r.awayPosition || 'N/A'}
-      Gols marcados/jogo:   ${r.awayGoalsAvg ?? 'N/A'}
-      Gols sofridos/jogo:   ${r.awayGoalsConceded ?? 'N/A'}
-      Clean sheets:         ${r.awayCleanSheets || 'N/A'}
-      Motivação:            ${r.awayMotivation || 'N/A'}
-      Lesões/Suspensos:     ${r.awayInjuries || 'N/A'}
+      Forma geral últ.5:     ${r.awayForm || 'N/A'}
+      Forma FORA últ.5:      ${r.awayFormAway || 'N/A'}
+      Posição na tabela:     ${r.awayPosition || 'N/A'}
+      Gols marcados/jogo:    ${r.awayGoalsAvg ?? 'N/A'}
+      Gols sofridos/jogo:    ${r.awayGoalsConceded ?? 'N/A'}
+      xG médio/jogo:         ${r.awayXG || 'N/A'}
+      Clean sheets (últ.10): ${r.awayCleanSheets || 'N/A'}
+      Motivação:             ${r.awayMotivation || 'N/A'}
+      Lesões/Suspensos:      ${r.awayInjuries || 'Nenhum conhecido'}
 
     H2H (confrontos diretos): ${r.h2hLast3 || 'N/A'}
     Info adicional:           ${r.keyInfo || 'N/A'}`;
     }
 
+    dataBlock += buildMovementBlock(mv);
+
     return `${i + 1}. ${m.home_team} x ${m.away_team} — ${m.sport_title} — ${time}
 ${oddsLines}${dataBlock}`;
   }).join('\n\n');
 
-  const prompt = `Você é um analista esportivo profissional especialista em futebol. Analise cada jogo com profundidade usando TODOS os dados fornecidos.
+  const prompt = `Você é um analista esportivo profissional especialista em futebol. Analise cada jogo com profundidade máxima usando TODOS os dados fornecidos.
 
-INSTRUÇÕES DE ANÁLISE:
-1. Forma em casa/fora é MAIS relevante que a forma geral — um time que perde fora mas vence em casa muda completamente o prognóstico
-2. Gols sofridos e clean sheets revelam solidez defensiva — tão importante quanto ataque
-3. Motivação importa: um time no Z4 luta muito mais do que um time estagnado no meio
-4. Se as odds contradizem os dados reais, questione — o mercado erra
-5. H2H recente pode indicar padrões psicológicos entre os times
-6. Só preveja com confiança mínima de 65% baseada nos dados concretos
+CRITÉRIOS DE ANÁLISE (em ordem de importância):
+1. FORMA CASA/FORA: é mais decisiva que a forma geral — um visitante com DDDDD fora não merece apoio independente das odds
+2. xG (Expected Goals): revela se resultados recentes foram merecidos ou sorte — xG alto com poucos gols = time perigoso
+3. GOLS SOFRIDOS + CLEAN SHEETS: solidez defensiva é tão importante quanto ataque
+4. MOTIVAÇÃO: zona de rebaixamento gera desespero e intensidade extra; meio de tabela sem objetivos é apático
+5. H2H: padrões psicológicos entre times específicos importam
+6. MOVIMENTAÇÃO DE ODDS: se odds caíram significativamente desde a abertura, apostadores profissionais sabem algo — leve muito a sério
+7. ODDS BRUTAS: use apenas para confirmar probabilidade implícita do mercado, nunca como critério único
+
+DECISÃO:
+- Só preveja se tiver 65%+ de confiança baseada nos dados concretos
+- Se os dados contradizem as odds, questione — o mercado erra
+- SKIP quando há muita incerteza ou dados insuficientes
 
 JOGOS:
 ${matchList}
@@ -71,7 +93,7 @@ Responda APENAS com JSON válido:
       "away_team": "Time B",
       "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",
       "confidence": 0-100,
-      "reasoning": "análise objetiva citando dados reais: forma casa/fora, posição, gols, motivação, H2H — 2-3 linhas"
+      "reasoning": "cite dados específicos: forma casa/fora, xG, motivação, H2H, movimento de odds — 2-3 linhas objetivas"
     }
   ]
 }`;
@@ -94,7 +116,6 @@ Responda APENAS com JSON válido:
         const match = matches.find(m => m.home_team === p.home_team && m.away_team === p.away_team);
         const best = match ? getBestOdds(match, p.prediction) : { house: null, odd: null };
         const allOdds = match ? formatOddsForMatch(match) : {};
-
         return {
           ...p,
           best_house: best.house,

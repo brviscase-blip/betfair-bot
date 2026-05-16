@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
-const { getTodaysMatches } = require('./odds');
+const { getTodaysMatches, formatOddsForMatch } = require('./odds');
 const { analyzeTodaysMatches } = require('./analyzer');
 const { getMatchStats } = require('./stats');
 const { researchMatch } = require('./researcher');
@@ -12,6 +12,7 @@ const {
   insertPrediction, getTodaysPredictions,
   updatePredictionResult, getPredictionHistory,
   analysisAlreadyDoneToday,
+  saveOddsSnapshot, getOddsMovement,
 } = require('./db');
 
 const app = express();
@@ -27,6 +28,23 @@ function log(msg, type = 'info') {
   botLog.unshift(entry);
   if (botLog.length > 100) botLog.pop();
   console.log(`[${type.toUpperCase()}] ${msg}`);
+}
+
+// ─── Snapshot de odds (rastreamento de movimentação) ─────────────────────────
+
+async function takeOddsSnapshot(label) {
+  try {
+    const matches = await getTodaysMatches();
+    if (!matches.length) return;
+    for (const m of matches) {
+      const key = `${m.home_team}|${m.away_team}`;
+      const oddsData = formatOddsForMatch(m);
+      await saveOddsSnapshot(key, m.sport_key, label, oddsData);
+    }
+    log(`📸 Snapshot de odds salvo — ${label} (${matches.length} jogos)`, 'info');
+  } catch (err) {
+    log(`Erro no snapshot de odds: ${err.message}`, 'error');
+  }
 }
 
 // ─── Análise diária ──────────────────────────────────────────────────────────
@@ -49,18 +67,23 @@ async function runDailyAnalysis({ force = false } = {}) {
     return;
   }
 
+  // Salva snapshot de abertura das odds
+  const today = new Date().toISOString().split('T')[0];
+  for (const m of matches) {
+    await saveOddsSnapshot(`${m.home_team}|${m.away_team}`, m.sport_key, 'morning', formatOddsForMatch(m));
+  }
+
   log(`📋 ${matches.length} jogos encontrados — buscando estatísticas reais...`, 'info');
 
+  // Coleta dados de cada jogo: API primeiro, web search como fallback
   const researchMap = {};
   for (const m of matches) {
     const key = `${m.home_team}|${m.away_team}`;
-    // Tenta API football-data.org primeiro
-    let stats = await getMatchStats(m.home_team, m.away_team, m.sport_key);
+    const stats = await getMatchStats(m.home_team, m.away_team, m.sport_key);
     if (stats) {
       researchMap[key] = stats;
       log(`📊 [API] ${m.home_team} x ${m.away_team}`, 'info');
     } else {
-      // Fallback: busca web via Claude (cobre ligas não disponíveis na API)
       const web = await researchMatch(m.home_team, m.away_team);
       if (web) {
         researchMap[key] = web;
@@ -69,10 +92,18 @@ async function runDailyAnalysis({ force = false } = {}) {
     }
   }
 
+  // Adiciona movimentação de odds se houver snapshots anteriores
+  const movementMap = {};
+  for (const m of matches) {
+    const key = `${m.home_team}|${m.away_team}`;
+    const mv = await getOddsMovement(today, key);
+    if (mv) movementMap[key] = mv;
+  }
+
   const researched = Object.keys(researchMap).length;
   log(`🔎 ${researched}/${matches.length} jogos com dados reais — analisando...`, 'info');
 
-  const predictions = await analyzeTodaysMatches(matches, researchMap);
+  const predictions = await analyzeTodaysMatches(matches, researchMap, movementMap);
   if (predictions.length === 0) {
     log('IA não encontrou jogos com confiança suficiente', 'warn');
     await sendMessage('📋 *Análise do dia*\n\nNenhum jogo com confiança suficiente hoje.');
@@ -91,26 +122,19 @@ async function runDailyAnalysis({ force = false } = {}) {
   await sendDailyReport(predictions);
 }
 
-// ─── Cron: análise diária às 07:00 ──────────────────────────────────────────
+// ─── Crons ───────────────────────────────────────────────────────────────────
 
-cron.schedule('0 7 * * *', () => {
-  runDailyAnalysis();
-});
+cron.schedule('0 7 * * *',  () => runDailyAnalysis());           // Análise principal
+cron.schedule('0 14 * * *', () => takeOddsSnapshot('afternoon')); // Snapshot tarde
+cron.schedule('0 18 * * *', () => takeOddsSnapshot('evening'));   // Snapshot noite
 
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 app.get('/api/status', async (req, res) => {
   try {
     const predictions = await getTodaysPredictions();
-    res.json({
-      botRunning,
-      lastAnalysis,
-      totalToday: predictions.length,
-      log: botLog.slice(0, 30),
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    res.json({ botRunning, lastAnalysis, totalToday: predictions.length, log: botLog.slice(0, 30) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/bot/toggle', async (req, res) => {
@@ -128,32 +152,24 @@ app.post('/api/analyze', async (req, res) => {
     await runDailyAnalysis({ force: true });
     const predictions = await getTodaysPredictions();
     res.json({ success: true, predictions });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/predictions', async (req, res) => {
   try {
     const predictions = await getTodaysPredictions();
     res.json(predictions);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/predictions/:id/result', async (req, res) => {
   const { result } = req.body;
-  if (!['WIN', 'LOSS'].includes(result)) {
-    return res.status(400).json({ error: 'result deve ser WIN ou LOSS' });
-  }
+  if (!['WIN', 'LOSS'].includes(result)) return res.status(400).json({ error: 'result deve ser WIN ou LOSS' });
   try {
     await updatePredictionResult(parseInt(req.params.id), result);
-    log(`Resultado registrado: ID ${req.params.id} → ${result}`, result === 'WIN' ? 'success' : 'error');
+    log(`Resultado: ID ${req.params.id} → ${result}`, result === 'WIN' ? 'success' : 'error');
     res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/history', async (req, res) => {
@@ -164,16 +180,9 @@ app.get('/api/history', async (req, res) => {
     const total = wins + losses;
     res.json({
       history,
-      stats: {
-        total,
-        wins,
-        losses,
-        winRate: total > 0 ? parseFloat(((wins / total) * 100).toFixed(1)) : 0,
-      },
+      stats: { total, wins, losses, winRate: total > 0 ? parseFloat(((wins / total) * 100).toFixed(1)) : 0 },
     });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Start ───────────────────────────────────────────────────────────────────
