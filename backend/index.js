@@ -248,8 +248,10 @@ app.listen(PORT, async () => {
         await sendMessage('⛔ Bot *DESLIGADO*.');
 
       } else if (cmd === '/analisar') {
-        await sendMessage('🔍 Análise manual iniciada...');
-        await runDailyAnalysis({ force: true });
+        await sendMessage('🔍 Análise manual iniciada... pode levar alguns minutos, aguarde os cards.');
+        runDailyAnalysis({ force: true }).catch(async err => {
+          await sendMessage(`❌ Erro na análise: ${err.message}`);
+        });
 
       } else if (cmd === '/status') {
         const predictions = await getTodaysPredictions();
