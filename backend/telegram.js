@@ -5,7 +5,6 @@ const TOKEN = process.env.TELEGRAM_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const BASE = `https://api.telegram.org/bot${TOKEN}`;
 
-// Envia mensagem simples
 async function sendMessage(text, parseMode = 'Markdown') {
   if (!TOKEN || !CHAT_ID) return;
   try {
@@ -19,121 +18,41 @@ async function sendMessage(text, parseMode = 'Markdown') {
   }
 }
 
-// Envia alerta de oportunidade com botões Aprovar/Rejeitar
-async function sendOpportunityAlert(opp) {
-  if (!TOKEN || !CHAT_ID) return;
-
-  const riskEmoji = { LOW: '🟢', MEDIUM: '🟡', HIGH: '🔴' }[opp.riskLevel] || '⚪';
-  const betTypeEmoji = opp.betType === 'BACK' ? '📈' : '📉';
-
-  const text = `
-🤖 *NOVA OPORTUNIDADE — BetBot AI*
-
-⚽ *${opp.match}*
-🕐 ${new Date(opp.startTime).toLocaleString('pt-BR')}
-
-${betTypeEmoji} *${opp.betType}* — ${opp.selection}
-📊 Mercado: ${opp.market}
-🎯 Odd entrada: *${opp.entryOdd}*
-🚪 Cash out alvo: ${opp.cashOutTarget}
-
-💰 Valor: R$ ${opp.stake}
-✨ Lucro projetado: *R$ ${opp.projectedProfit}*
-🎲 Confiança: ${opp.confidence}% ${riskEmoji}
-
-📝 _${opp.reasoning}_
-
-🏠 Forma casa: ${opp.research?.homeForm || 'N/A'}
-✈️ Forma fora: ${opp.research?.awayForm || 'N/A'}
-💡 ${opp.research?.keyInfo || ''}
-  `.trim();
-
-  try {
-    await axios.post(`${BASE}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text,
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '✅ APROVAR', callback_data: `approve_${opp.id}` },
-          { text: '❌ REJEITAR', callback_data: `reject_${opp.id}` },
-        ]],
-      },
-    });
-  } catch (e) {
-    console.error('Telegram opportunity alert error:', e.message);
+async function sendDailyReport(predictions) {
+  if (!predictions || predictions.length === 0) {
+    await sendMessage('📋 *Análise do dia — BetBot AI*\n\nNenhum jogo encontrado para hoje.');
+    return;
   }
+
+  const date = new Date().toLocaleDateString('pt-BR');
+  const lines = predictions.map(p => {
+    const predLabel = { HOME: `🏠 ${p.home_team}`, DRAW: '🤝 Empate', AWAY: `✈️ ${p.away_team}` }[p.prediction] || p.prediction;
+    const bestInfo = p.best_house && p.best_odd ? ` | Melhor odd: *${p.best_odd}* (${p.best_house})` : '';
+    return `⚽ *${p.match}*\n→ ${predLabel} (${p.confidence}% confiança)${bestInfo}\n_${p.reasoning}_`;
+  });
+
+  const text = `📋 *Análise do dia — ${date}*\n\n${lines.join('\n\n')}\n\n_Apostas manuais — registre o resultado no app._`;
+  await sendMessage(text);
 }
 
-// Envia alerta de cash out
-async function sendCashOutAlert(bet, pnl) {
-  const emoji = pnl >= 0 ? '💰' : '📉';
-  await sendMessage(
-    `${emoji} *Cash Out — ${bet.match}*\n${bet.selection} | R$ ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}`
-  );
+async function sendMessage2(text) {
+  await sendMessage(text);
 }
 
-// Envia resumo diário
-async function sendDailySummary(sim) {
-  const emoji = sim.dailyPnL >= 0 ? '🟢' : '🔴';
-  await sendMessage(`
-📊 *Resumo do Dia — BetBot AI*
-
-${emoji} P&L hoje: R$ ${sim.dailyPnL >= 0 ? '+' : ''}${sim.dailyPnL.toFixed(2)}
-💰 Banca atual: R$ ${sim.banca.toFixed(2)}
-🎯 Meta mensal: ${sim.progressMensal}% concluído
-  `.trim());
-}
-
-// Processa callback de botões do Telegram
-async function processCallback(callbackQuery, pendingOpportunities, approveHandler, rejectHandler) {
-  const data = callbackQuery.data;
-  const messageId = callbackQuery.message.message_id;
-  const callbackId = callbackQuery.id;
-
-  // Responde o callback para remover o "loading" do botão
-  await axios.post(`${BASE}/answerCallbackQuery`, { callback_query_id: callbackId });
-
-  if (data.startsWith('approve_')) {
-    const oppId = parseFloat(data.replace('approve_', ''));
-    const result = await approveHandler(oppId);
-    if (result.success) {
-      await axios.post(`${BASE}/editMessageReplyMarkup`, {
-        chat_id: CHAT_ID, message_id: messageId,
-        reply_markup: { inline_keyboard: [] }
-      });
-      await sendMessage(`✅ *Aposta aprovada!*\nAguardando execução...`);
-    } else {
-      await sendMessage(`❌ Erro: ${result.error}`);
-    }
-  } else if (data.startsWith('reject_')) {
-    const oppId = parseFloat(data.replace('reject_', ''));
-    await rejectHandler(oppId);
-    await axios.post(`${BASE}/editMessageReplyMarkup`, {
-      chat_id: CHAT_ID, message_id: messageId,
-      reply_markup: { inline_keyboard: [] }
-    });
-    await sendMessage(`❌ Oportunidade rejeitada.`);
-  }
-}
-
-// Polling de updates do Telegram
 let lastUpdateId = 0;
 async function pollUpdates(handler) {
   if (!TOKEN || !CHAT_ID) return;
   try {
     const { data } = await axios.get(`${BASE}/getUpdates`, {
-      params: { offset: lastUpdateId + 1, timeout: 10 }
+      params: { offset: lastUpdateId + 1, timeout: 10 },
     });
     for (const update of (data.result || [])) {
       lastUpdateId = update.update_id;
-      if (update.callback_query) {
-        await handler(update.callback_query);
-      }
+      if (update.callback_query) await handler(update.callback_query);
     }
-  } catch (e) {
+  } catch {
     // silencioso
   }
 }
 
-module.exports = { sendMessage, sendOpportunityAlert, sendCashOutAlert, sendDailySummary, processCallback, pollUpdates };
+module.exports = { sendMessage, sendDailyReport, pollUpdates };

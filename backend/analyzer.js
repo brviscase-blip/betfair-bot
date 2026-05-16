@@ -1,56 +1,78 @@
 require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
+const { formatOddsForMatch, getBestOdds } = require('./odds');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-async function analyzeMatch(marketData, odds, history = []) {
-  const runners = odds?.runners?.map(r => ({
-    name: r.runnerName || 'Runner',
-    back: r.ex?.availableToBack?.[0]?.price || 0,
-    lay: r.ex?.availableToLay?.[0]?.price || 0,
-  })) || [];
+async function analyzeTodaysMatches(matches) {
+  if (!matches || matches.length === 0) return [];
 
-  const prompt = `Você é um trader esportivo especialista na Betfair Exchange.
+  const matchList = matches.map((m, i) => {
+    const oddsMap = formatOddsForMatch(m);
+    const oddsLines = Object.entries(oddsMap)
+      .map(([house, o]) => `    ${house}: Casa ${o.home ?? '-'} | Empate ${o.draw ?? '-'} | Fora ${o.away ?? '-'}`)
+      .join('\n');
 
-JOGO: ${marketData.event?.name || 'Futebol'}
-RUNNERS E ODDS:
-${runners.map((r, i) => `${i+1}. ${r.name}: Back ${r.back} | Lay ${r.lay}`).join('\n')}
+    const time = new Date(m.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-HISTÓRICO RECENTE:
-${history.length > 0 ? history.slice(-5).map(h => `- ${h.match}: ${h.result} (PnL: ${h.pnl})`).join('\n') : 'Sem histórico ainda'}
+    return `${i + 1}. ${m.home_team} x ${m.away_team} — ${m.sport_title} — ${time}\n${oddsLines}`;
+  }).join('\n\n');
 
-REGRAS:
-- Odd mínima para entrar: 2.10
-- Comissão Betfair: 5%
-- Só entrar se confiança >= 70%
-- Stake: 2-5% da banca
+  const prompt = `Você é um analista esportivo especialista em futebol. Analise os jogos abaixo e preveja o resultado mais provável de cada um.
 
-Analise e responda APENAS JSON válido:
+Use seu conhecimento sobre os times (forma recente, qualidade, posição no campeonato) e as odds como indicador de probabilidade implícita.
+
+JOGOS DE HOJE:
+${matchList}
+
+Regras:
+- Só preveja se tiver confiança mínima de 60%
+- Se não tiver confiança suficiente, coloque "SKIP" na prediction
+- Seja objetivo no reasoning (1 linha)
+
+Responda APENAS com JSON válido, sem texto antes ou depois:
 {
-  "shouldBet": true/false,
-  "confidence": 0-100,
-  "selection": "nome do runner",
-  "betType": "BACK ou LAY",
-  "targetOdd": número,
-  "exitOdd": número,
-  "stakePercent": 2-5,
-  "reasoning": "motivo em 1 linha",
-  "riskLevel": "LOW/MEDIUM/HIGH"
+  "predictions": [
+    {
+      "match": "Time A x Time B",
+      "home_team": "Time A",
+      "away_team": "Time B",
+      "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",
+      "confidence": 0-100,
+      "reasoning": "motivo em 1 linha"
+    }
+  ]
 }`;
 
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 500,
+    max_tokens: 2000,
     messages: [{ role: 'user', content: prompt }],
   });
 
   try {
     const text = response.content[0].text;
     const json = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(json);
+    const parsed = JSON.parse(json);
+    const predictions = parsed.predictions || [];
+
+    return predictions
+      .filter(p => p.prediction !== 'SKIP')
+      .map(p => {
+        const match = matches.find(m => m.home_team === p.home_team && m.away_team === p.away_team);
+        const best = match ? getBestOdds(match, p.prediction) : { house: null, odd: null };
+        const allOdds = match ? formatOddsForMatch(match) : {};
+
+        return {
+          ...p,
+          best_house: best.house,
+          best_odd: best.odd,
+          all_odds: allOdds,
+        };
+      });
   } catch {
-    return { shouldBet: false, confidence: 0, reasoning: 'Erro ao parsear análise da IA' };
+    return [];
   }
 }
 
-module.exports = { analyzeMatch };
+module.exports = { analyzeTodaysMatches };

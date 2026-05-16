@@ -10,10 +10,12 @@ const supabase = createClient(
 
 async function initDB() { return true; }
 
+// ─── Simulação (estado geral do bot) ────────────────────────────────────────
+
 async function getSimState() {
   const { data } = await supabase.from('betbot_simulation').select('value').eq('key', 'state').single();
   if (!data) {
-    const initial = { banca: 100, bancaInicial: 100, dailyPnL: 0, totalPnL: 0, stopLoss: -3, stopGain: 1.5, metaMensal: 10, lastReset: new Date().toDateString() };
+    const initial = { banca: 100, bancaInicial: 100, dailyPnL: 0, totalPnL: 0, stopLoss: -3, stopGain: 1.5, metaMensal: 10, lastReset: new Date().toDateString(), botRunning: false };
     await setSimState(initial);
     return initial;
   }
@@ -24,31 +26,72 @@ async function setSimState(state) {
   await supabase.from('betbot_simulation').upsert({ key: 'state', value: state, updated_at: new Date().toISOString() }, { onConflict: 'key' });
 }
 
-async function getActiveBets() {
-  const { data } = await supabase.from('betbot_bets').select('*').eq('status', 'OPEN');
+// ─── Previsões diárias ───────────────────────────────────────────────────────
+
+async function insertPrediction(prediction) {
+  const today = new Date().toISOString().split('T')[0];
+  const { data, error } = await supabase.from('betbot_predictions').insert({
+    date: today,
+    match: prediction.match,
+    home_team: prediction.home_team,
+    away_team: prediction.away_team,
+    prediction: prediction.prediction,
+    confidence: prediction.confidence,
+    reasoning: prediction.reasoning,
+    best_house: prediction.best_house,
+    best_odd: prediction.best_odd,
+    all_odds: prediction.all_odds,
+    result: 'PENDING',
+    created_at: new Date().toISOString(),
+  }).select().single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function getTodaysPredictions() {
+  const today = new Date().toISOString().split('T')[0];
+  const { data } = await supabase
+    .from('betbot_predictions')
+    .select('*')
+    .eq('date', today)
+    .order('created_at', { ascending: true });
   return data || [];
 }
 
-async function insertBet(bet) {
-  await supabase.from('betbot_bets').insert({ id: bet.id, match: bet.match, market: bet.market, selection: bet.selection, bet_type: bet.betType, stake: bet.stake, entry_odd: bet.entryOdd, exit_odd: bet.exitOdd, cash_out_target: bet.cashOutTarget, projected_profit: bet.projectedProfit, current_odd: bet.entryOdd, status: 'OPEN', placed_at: new Date().toISOString() });
+async function updatePredictionResult(id, result) {
+  await supabase
+    .from('betbot_predictions')
+    .update({ result })
+    .eq('id', id);
 }
 
-async function updateBet(id, updates) {
-  await supabase.from('betbot_bets').update(updates).eq('id', id);
-}
-
-async function getRecentBets(limit = 10) {
-  const { data } = await supabase.from('betbot_bets').select('*').neq('status', 'OPEN').order('closed_at', { ascending: false }).limit(limit);
+async function getPredictionHistory(limit = 50) {
+  const { data } = await supabase
+    .from('betbot_predictions')
+    .select('*')
+    .neq('result', 'PENDING')
+    .order('created_at', { ascending: false })
+    .limit(limit);
   return data || [];
 }
 
-async function insertHistory(record) {
-  await supabase.from('betbot_history').insert({ match: record.match, market: record.market, selection: record.selection, bet_type: record.betType, odd: record.odd, stake: record.stake, pnl: record.pnl, result: record.result, recorded_at: new Date().toISOString() });
+async function analysisAlreadyDoneToday() {
+  const today = new Date().toISOString().split('T')[0];
+  const { count } = await supabase
+    .from('betbot_predictions')
+    .select('id', { count: 'exact', head: true })
+    .eq('date', today);
+  return (count || 0) > 0;
 }
 
-async function getHistory(limit = 20) {
-  const { data } = await supabase.from('betbot_history').select('*').order('recorded_at', { ascending: false }).limit(limit);
-  return data || [];
-}
-
-module.exports = { initDB, getSimState, setSimState, getActiveBets, insertBet, updateBet, getRecentBets, insertHistory, getHistory };
+module.exports = {
+  initDB,
+  getSimState,
+  setSimState,
+  insertPrediction,
+  getTodaysPredictions,
+  updatePredictionResult,
+  getPredictionHistory,
+  analysisAlreadyDoneToday,
+};
