@@ -94,11 +94,20 @@ async function pollUpdates(handler) {
     });
     for (const update of (data.result || [])) {
       lastUpdateId = update.update_id;
-      if (update.callback_query) await handler(update.callback_query);
+      const text = update.message?.text || update.callback_query?.data;
+      if (text) await handler(text.trim().toLowerCase());
     }
   } catch {
     // silencioso
   }
+}
+
+function startPolling(handler) {
+  const loop = async () => {
+    await pollUpdates(handler);
+    setTimeout(loop, 1000);
+  };
+  loop();
 }
 
 async function sendCalibrationReport(calibration) {
@@ -115,4 +124,4 @@ async function sendCalibrationReport(calibration) {
   await sendMessage(text);
 }
 
-module.exports = { sendMessage, sendDailyReport, sendCalibrationReport, pollUpdates };
+module.exports = { sendMessage, sendDailyReport, sendCalibrationReport, startPolling };

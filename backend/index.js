@@ -7,7 +7,7 @@ const { analyzeTodaysMatches } = require('./analyzer');
 const { getMatchStats } = require('./stats');
 const { researchMatch } = require('./researcher');
 const { getWeather } = require('./weather');
-const { sendMessage, sendDailyReport, sendCalibrationReport } = require('./telegram');
+const { sendMessage, sendDailyReport, sendCalibrationReport, startPolling } = require('./telegram');
 const { checkDailyResults } = require('./results');
 const { runWeeklyCalibration } = require('./calibrator');
 const {
@@ -224,8 +224,45 @@ app.listen(PORT, async () => {
     const sim = await getSimState();
     botRunning = sim.botRunning || false;
     log(`Sistema iniciado — Bot ${botRunning ? 'LIGADO' : 'DESLIGADO'}`, 'success');
-    await sendMessage(`🚀 *BetBot AI iniciado!*\nBot ${botRunning ? '✅ LIGADO' : '⏸ PAUSADO'}\nAnálise diária às 07:00.`);
+    await sendMessage(`🚀 *BetBot AI iniciado!*\nBot ${botRunning ? '✅ LIGADO' : '⏸ PAUSADO'}\nAnálise diária às 06:00.\n\nComandos disponíveis:\n/ligar — liga o bot\n/desligar — desliga o bot\n/analisar — força análise agora\n/status — situação atual`);
   } catch (err) {
     log(`Erro ao iniciar: ${err.message}`, 'error');
   }
+
+  startPolling(async (cmd) => {
+    try {
+      if (cmd === '/ligar') {
+        botRunning = true;
+        const sim = await getSimState();
+        sim.botRunning = true;
+        await setSimState(sim);
+        log('Bot LIGADO via Telegram', 'success');
+        await sendMessage('✅ Bot *LIGADO*.');
+
+      } else if (cmd === '/desligar') {
+        botRunning = false;
+        const sim = await getSimState();
+        sim.botRunning = false;
+        await setSimState(sim);
+        log('Bot DESLIGADO via Telegram', 'warn');
+        await sendMessage('⛔ Bot *DESLIGADO*.');
+
+      } else if (cmd === '/analisar') {
+        await sendMessage('🔍 Análise manual iniciada...');
+        await runDailyAnalysis({ force: true });
+
+      } else if (cmd === '/status') {
+        const predictions = await getTodaysPredictions();
+        const state = botRunning ? '✅ LIGADO' : '⛔ DESLIGADO';
+        const last = lastAnalysis
+          ? new Date(lastAnalysis).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+          : 'Nunca';
+        await sendMessage(
+          `🤖 *BetBot AI — Status*\n\nBot: ${state}\nÚltima análise: ${last}\nPrevisões hoje: ${predictions.length}`
+        );
+      }
+    } catch (err) {
+      log(`Erro no comando Telegram: ${err.message}`, 'error');
+    }
+  });
 });
