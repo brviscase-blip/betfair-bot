@@ -24,14 +24,18 @@ async function sendDailyReport(predictions) {
     return;
   }
 
-  const date = new Date().toLocaleDateString('pt-BR');
+  const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const divider = '━━━━━━━━━━━━━━━━━━━━━━';
+
   const lines = predictions.map(p => {
-    const predLabel = { HOME: `🏠 ${p.home_team}`, DRAW: '🤝 Empate', AWAY: `✈️ ${p.away_team}` }[p.prediction] || p.prediction;
-    const bestInfo = p.best_house && p.best_odd ? ` | Melhor odd: *${p.best_odd}* (${p.best_house})` : '';
-    return `⚽ *${p.match}*\n→ ${predLabel} (${p.confidence}% confiança)${bestInfo}\n_${p.reasoning}_`;
+    const dot = p.confidence >= 70 ? '🟢' : '🟡';
+    const name = p.match.length > 24 ? p.match.slice(0, 24) + '…' : p.match.padEnd(24);
+    const conf = `${p.confidence}%`;
+    const odd = p.best_odd ? `${p.best_odd} (${p.best_house})` : '—';
+    return `${dot} ${name} ${conf} · ${odd}`;
   });
 
-  const text = `📋 *Análise do dia — ${date}*\n\n${lines.join('\n\n')}\n\n_Apostas manuais — registre o resultado no app._`;
+  const text = `📋 *${date} — ${predictions.length} análises*\n\`${divider}\`\n\`${lines.join('\n')}\`\n\`${divider}\`\n_Detalhes e odds no app_`;
   await sendMessage(text);
 }
 
