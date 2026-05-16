@@ -103,17 +103,26 @@ async function saveOddsSnapshot(matchKey, sportKey, label, oddsData) {
 }
 
 async function getOddsMovement(date, matchKey) {
+  // Busca snapshots dos últimos 7 dias para ter histórico completo
+  const since = new Date(date);
+  since.setDate(since.getDate() - 7);
+  const sinceStr = since.toISOString().split('T')[0];
+
   const { data } = await supabase
     .from('betbot_odds_snapshots')
     .select('*')
-    .eq('date', date)
     .eq('match_key', matchKey)
+    .gte('date', sinceStr)
+    .lte('date', date)
     .order('snapshot_time', { ascending: true });
 
   if (!data || data.length < 2) return null;
 
   const first = data[0].odds_data;
   const last  = data[data.length - 1].odds_data;
+  const daySpan = data[data.length - 1].date !== data[0].date
+    ? ` (${data[0].date} → ${data[data.length - 1].date})`
+    : ' (hoje)';
 
   const movements = [];
   for (const house of Object.keys(last)) {
@@ -123,8 +132,8 @@ async function getOddsMovement(date, matchKey) {
       const cur = last[house]?.[side];
       if (!ini || !cur) continue;
       const pct = ((cur - ini) / ini) * 100;
-      if (Math.abs(pct) >= 8) {
-        movements.push({ house, side, initial: ini, current: cur, pct: pct.toFixed(1) });
+      if (Math.abs(pct) >= 5) {
+        movements.push({ house, side, initial: ini, current: cur, pct: pct.toFixed(1), span: daySpan });
       }
     }
   }

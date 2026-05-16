@@ -6,6 +6,7 @@ const { getTodaysMatches, formatOddsForMatch } = require('./odds');
 const { analyzeTodaysMatches } = require('./analyzer');
 const { getMatchStats } = require('./stats');
 const { researchMatch } = require('./researcher');
+const { getWeather } = require('./weather');
 const { sendMessage, sendDailyReport } = require('./telegram');
 const {
   initDB, getSimState, setSimState,
@@ -92,7 +93,7 @@ async function runDailyAnalysis({ force = false } = {}) {
     }
   }
 
-  // Adiciona movimentação de odds se houver snapshots anteriores
+  // Movimentação de odds (histórico 7 dias)
   const movementMap = {};
   for (const m of matches) {
     const key = `${m.home_team}|${m.away_team}`;
@@ -100,10 +101,17 @@ async function runDailyAnalysis({ force = false } = {}) {
     if (mv) movementMap[key] = mv;
   }
 
+  // Clima do estádio mandante
+  const weatherMap = {};
+  await Promise.all(matches.map(async m => {
+    const w = await getWeather(m.home_team);
+    if (w) weatherMap[`${m.home_team}|${m.away_team}`] = w;
+  }));
+
   const researched = Object.keys(researchMap).length;
   log(`🔎 ${researched}/${matches.length} jogos com dados reais — analisando...`, 'info');
 
-  const predictions = await analyzeTodaysMatches(matches, researchMap, movementMap);
+  const predictions = await analyzeTodaysMatches(matches, researchMap, movementMap, weatherMap);
   if (predictions.length === 0) {
     log('IA não encontrou jogos com confiança suficiente', 'warn');
     await sendMessage('📋 *Análise do dia*\n\nNenhum jogo com confiança suficiente hoje.');
@@ -124,7 +132,7 @@ async function runDailyAnalysis({ force = false } = {}) {
 
 // ─── Crons ───────────────────────────────────────────────────────────────────
 
-cron.schedule('0 7 * * *',  () => runDailyAnalysis());           // Análise principal
+cron.schedule('0 6 * * *',  () => runDailyAnalysis());           // Análise principal
 cron.schedule('0 14 * * *', () => takeOddsSnapshot('afternoon')); // Snapshot tarde
 cron.schedule('0 18 * * *', () => takeOddsSnapshot('evening'));   // Snapshot noite
 

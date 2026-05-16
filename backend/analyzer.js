@@ -15,7 +15,7 @@ function buildMovementBlock(movements) {
   return `\n  ⚠️ MOVIMENTAÇÃO DE MERCADO (vs abertura):\n${lines}`;
 }
 
-async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {}) {
+async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {}, weatherMap = {}) {
   if (!matches || matches.length === 0) return [];
 
   const matchList = matches.map((m, i) => {
@@ -28,6 +28,7 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {})
     const key = `${m.home_team}|${m.away_team}`;
     const r = researchMap[key];
     const mv = movementMap[key];
+    const w = weatherMap[key];
 
     let dataBlock = '';
     if (r) {
@@ -61,6 +62,11 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {})
 
     dataBlock += buildMovementBlock(mv);
 
+    if (w) {
+      dataBlock += `\n  🌤️ CLIMA (${w.city}): ${w.description}`;
+      if (w.alerts) dataBlock += `\n     ⚠️ Alerta: ${w.alerts}`;
+    }
+
     return `${i + 1}. ${m.home_team} x ${m.away_team} — ${m.sport_title} — ${time}
 ${oddsLines}${dataBlock}`;
   }).join('\n\n');
@@ -73,7 +79,8 @@ CRITÉRIOS DE ANÁLISE (em ordem de importância):
 3. GOLS SOFRIDOS + CLEAN SHEETS: solidez defensiva é tão importante quanto ataque
 4. MOTIVAÇÃO: zona de rebaixamento gera desespero e intensidade extra; meio de tabela sem objetivos é apático
 5. H2H: padrões psicológicos entre times específicos importam
-6. MOVIMENTAÇÃO DE ODDS: se odds caíram significativamente desde a abertura, apostadores profissionais sabem algo — leve muito a sério
+6. CLIMA: chuva forte favorece times físicos e prejudica times técnicos; vento >10m/s atrapalha passes longos e chutes de longa distância; calor extremo favorece time local acostumado
+7. MOVIMENTAÇÃO DE ODDS: se odds caíram significativamente desde a abertura, apostadores profissionais sabem algo — leve muito a sério
 7. ODDS BRUTAS: use apenas para confirmar probabilidade implícita do mercado, nunca como critério único
 
 DECISÃO:
