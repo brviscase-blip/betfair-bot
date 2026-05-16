@@ -60,7 +60,7 @@ function buildPredictionCard(p) {
   return (
     `⚽ *${p.match}*\n` +
     `🏆 ${sport} · ${time}\n` +
-    `🎯 BACK em: *${selectionName}*\n` +
+    `🎯 Apostar em: *${selectionName}*\n` +
     `💡 _${p.reasoning}_\n` +
     `\`${divider}\`\n` +
     `\`${oddsLines}\`\n` +
