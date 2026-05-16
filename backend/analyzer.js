@@ -68,6 +68,8 @@ Responda APENAS com JSON válido, sem texto antes ou depois:
           best_house: best.house,
           best_odd: best.odd,
           all_odds: allOdds,
+          sport_title: match?.sport_title || null,
+          commence_time: match?.commence_time || null,
         };
       });
   } catch {

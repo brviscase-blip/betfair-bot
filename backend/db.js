@@ -42,6 +42,8 @@ async function insertPrediction(prediction) {
     best_house: prediction.best_house,
     best_odd: prediction.best_odd,
     all_odds: prediction.all_odds,
+    sport_title: prediction.sport_title || null,
+    commence_time: prediction.commence_time || null,
     result: 'PENDING',
     created_at: new Date().toISOString(),
   }).select().single();
