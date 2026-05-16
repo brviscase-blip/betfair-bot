@@ -79,7 +79,17 @@ async function runDailyAnalysis({ force = false } = {}) {
 
   log(`📋 ${matches.length} jogos encontrados — buscando estatísticas reais...`, 'info');
 
-  // Coleta dados de cada jogo: API primeiro, web search como fallback
+  // Ligas com cobertura completa na football-data.org — web search nunca é fallback para essas
+  const COVERED_SPORTS = new Set([
+    'soccer_brazil_campeonato',
+    'soccer_spain_la_liga',
+    'soccer_england_premier_league',
+    'soccer_uefa_champs_league',
+    'soccer_germany_bundesliga',
+    'soccer_italy_serie_a',
+    'soccer_france_ligue_one',
+  ]);
+
   const researchMap = {};
   for (const m of matches) {
     const key = `${m.home_team}|${m.away_team}`;
@@ -87,12 +97,15 @@ async function runDailyAnalysis({ force = false } = {}) {
     if (stats) {
       researchMap[key] = stats;
       log(`📊 [API] ${m.home_team} x ${m.away_team}`, 'info');
-    } else {
+    } else if (!COVERED_SPORTS.has(m.sport_key)) {
+      // Web search apenas para ligas sem cobertura na API estruturada
       const web = await researchMatch(m.home_team, m.away_team);
       if (web) {
         researchMap[key] = web;
         log(`🌐 [Web] ${m.home_team} x ${m.away_team}`, 'info');
       }
+    } else {
+      log(`⚠️ [SEM DADOS] ${m.home_team} x ${m.away_team} — nome não encontrado na API`, 'warn');
     }
   }
 
