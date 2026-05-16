@@ -4,6 +4,7 @@ const cors = require('cors');
 const cron = require('node-cron');
 const { getTodaysMatches } = require('./odds');
 const { analyzeTodaysMatches } = require('./analyzer');
+const { researchMatch } = require('./researcher');
 const { sendMessage, sendDailyReport } = require('./telegram');
 const {
   initDB, getSimState, setSimState,
@@ -47,9 +48,20 @@ async function runDailyAnalysis({ force = false } = {}) {
     return;
   }
 
-  log(`📋 ${matches.length} jogos encontrados — chamando IA...`, 'info');
+  log(`📋 ${matches.length} jogos encontrados — pesquisando dados reais...`, 'info');
 
-  const predictions = await analyzeTodaysMatches(matches);
+  const researchResults = await Promise.all(
+    matches.map(m => researchMatch(m.home_team, m.away_team))
+  );
+  const researchMap = {};
+  matches.forEach((m, i) => {
+    if (researchResults[i]) researchMap[`${m.home_team}|${m.away_team}`] = researchResults[i];
+  });
+
+  const researched = Object.keys(researchMap).length;
+  log(`🔎 ${researched}/${matches.length} jogos com dados reais — analisando...`, 'info');
+
+  const predictions = await analyzeTodaysMatches(matches, researchMap);
   if (predictions.length === 0) {
     log('IA não encontrou jogos com confiança suficiente', 'warn');
     await sendMessage('📋 *Análise do dia*\n\nNenhum jogo com confiança suficiente hoje.');
