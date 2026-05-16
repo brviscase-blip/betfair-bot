@@ -17,33 +17,50 @@ async function analyzeTodaysMatches(matches, researchMap = {}) {
     const key = `${m.home_team}|${m.away_team}`;
     const r = researchMap[key];
 
-    let researchBlock = '';
+    let dataBlock = '';
     if (r) {
-      researchBlock = `
-  📊 Dados reais:
-    Forma ${m.home_team}: ${r.homeForm || 'N/A'} | Posição: ${r.homePosition || 'N/A'} | Lesões: ${r.homeInjuries || 'Nenhum'}
-    Forma ${m.away_team}: ${r.awayForm || 'N/A'} | Posição: ${r.awayPosition || 'N/A'} | Lesões: ${r.awayInjuries || 'Nenhum'}
-    Média gols: ${m.home_team} ${r.homeGoalsAvg ?? 'N/A'} | ${m.away_team} ${r.awayGoalsAvg ?? 'N/A'}
-    H2H últimos 3: ${r.h2hLast3 || 'N/A'}
-    Info-chave: ${r.keyInfo || 'N/A'}`;
+      dataBlock = `
+  📊 DADOS REAIS:
+    ${m.home_team} (MANDANTE):
+      Forma geral (últ 5):  ${r.homeForm || 'N/A'}
+      Forma em CASA (últ 5): ${r.homeFormHome || r.homeForm || 'N/A'}
+      Posição na tabela:    ${r.homePosition || 'N/A'}
+      Gols marcados/jogo:   ${r.homeGoalsAvg ?? 'N/A'}
+      Gols sofridos/jogo:   ${r.homeGoalsConceded ?? 'N/A'}
+      Clean sheets:         ${r.homeCleanSheets || 'N/A'}
+      Motivação:            ${r.homeMotivation || 'N/A'}
+      Lesões/Suspensos:     ${r.homeInjuries || 'N/A'}
+
+    ${m.away_team} (VISITANTE):
+      Forma geral (últ 5):  ${r.awayForm || 'N/A'}
+      Forma FORA (últ 5):   ${r.awayFormAway || r.awayForm || 'N/A'}
+      Posição na tabela:    ${r.awayPosition || 'N/A'}
+      Gols marcados/jogo:   ${r.awayGoalsAvg ?? 'N/A'}
+      Gols sofridos/jogo:   ${r.awayGoalsConceded ?? 'N/A'}
+      Clean sheets:         ${r.awayCleanSheets || 'N/A'}
+      Motivação:            ${r.awayMotivation || 'N/A'}
+      Lesões/Suspensos:     ${r.awayInjuries || 'N/A'}
+
+    H2H (confrontos diretos): ${r.h2hLast3 || 'N/A'}
+    Info adicional:           ${r.keyInfo || 'N/A'}`;
     }
 
     return `${i + 1}. ${m.home_team} x ${m.away_team} — ${m.sport_title} — ${time}
-${oddsLines}${researchBlock}`;
+${oddsLines}${dataBlock}`;
   }).join('\n\n');
 
-  const prompt = `Você é um analista esportivo especialista em futebol. Analise os jogos abaixo usando OS DADOS REAIS fornecidos (forma recente, lesões, H2H, posição na tabela) combinados com as odds.
+  const prompt = `Você é um analista esportivo profissional especialista em futebol. Analise cada jogo com profundidade usando TODOS os dados fornecidos.
 
-NÃO baseie sua decisão apenas nas odds. Use os dados de desempenho real dos times para avaliar se o favorito das odds merece confiança ou não.
+INSTRUÇÕES DE ANÁLISE:
+1. Forma em casa/fora é MAIS relevante que a forma geral — um time que perde fora mas vence em casa muda completamente o prognóstico
+2. Gols sofridos e clean sheets revelam solidez defensiva — tão importante quanto ataque
+3. Motivação importa: um time no Z4 luta muito mais do que um time estagnado no meio
+4. Se as odds contradizem os dados reais, questione — o mercado erra
+5. H2H recente pode indicar padrões psicológicos entre os times
+6. Só preveja com confiança mínima de 65% baseada nos dados concretos
 
-JOGOS DE HOJE:
+JOGOS:
 ${matchList}
-
-Regras:
-- Só preveja se tiver confiança mínima de 65% baseada nos DADOS REAIS + odds
-- Se os dados reais contradizem o favorito das odds, leve isso a sério
-- Se não tiver confiança suficiente, coloque "SKIP"
-- Reasoning deve mencionar dados reais específicos (forma, lesões, H2H)
 
 Responda APENAS com JSON válido:
 {
@@ -54,14 +71,14 @@ Responda APENAS com JSON válido:
       "away_team": "Time B",
       "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",
       "confidence": 0-100,
-      "reasoning": "motivo baseado em dados reais em 1-2 linhas"
+      "reasoning": "análise objetiva citando dados reais: forma casa/fora, posição, gols, motivação, H2H — 2-3 linhas"
     }
   ]
 }`;
 
   const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2000,
+    model: 'claude-sonnet-4-6',
+    max_tokens: 3000,
     messages: [{ role: 'user', content: prompt }],
   });
 
