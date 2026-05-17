@@ -133,29 +133,31 @@ async function sendDebugReport(allPredictions) {
   const ICON = { true: '✅', false: '❌', null: '⚪' };
   const PRED = { HOME: 'MANDANTE', DRAW: 'EMPATE', AWAY: 'VISITANTE' };
 
-  let text = `📋 *Análise completa — ${date}*\n`;
-  text += `${allPredictions.length} jogos | ✅ *${approved.length} aprovados* _(≥65%)_ | ⏭ ${skipped.length} descartados\n`;
-  text += `\`━━━━━━━━━━━━━━━━━━━\`\n`;
+  // Cabeçalho
+  await sendMessage(
+    `📋 Análise completa — ${date}\n` +
+    `${allPredictions.length} jogos | ✅ ${approved.length} aprovados (≥65%) | ⏭ ${skipped.length} descartados`,
+    'MarkdownV2'
+  );
 
+  // Um card por jogo — sem Markdown complexo para evitar erros de formatação
   for (const p of allPredictions) {
     const isSkip = p.prediction === 'SKIP';
-    const icon   = isSkip ? '⏭' : '🎯';
     const pred   = isSkip ? 'SKIP' : (PRED[p.prediction] || p.prediction);
-    text += `\n${icon} *${p.match}* — ${p.confidence}% — ${pred}\n`;
-    text += `_${p.reasoning}_\n`;
+    const icon   = isSkip ? '⏭' : '🎯';
+
+    let card = `${icon} ${p.match} — ${p.confidence}% — ${pred}\n`;
+    card += `${p.reasoning}\n`;
+
     if (p.checklist?.length) {
-      text += p.checklist.map(item => {
+      card += p.checklist.map(item => {
         const key = item.v === true ? 'true' : item.v === false ? 'false' : 'null';
         return `${ICON[key]} ${item.c}: ${item.n}`;
-      }).join('\n') + '\n';
+      }).join('\n');
     }
-  }
 
-  // Envia em blocos de até 4000 chars para respeitar limite do Telegram
-  const MAX = 4000;
-  for (let i = 0; i < text.length; i += MAX) {
-    await sendMessage(text.slice(i, i + MAX));
-    if (i + MAX < text.length) await new Promise(r => setTimeout(r, 400));
+    await sendMessage(card, null); // null = sem parse_mode, texto puro
+    await new Promise(r => setTimeout(r, 300));
   }
 }
 
