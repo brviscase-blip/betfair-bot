@@ -8,11 +8,9 @@ const BASE = `https://api.telegram.org/bot${TOKEN}`;
 async function sendMessage(text, parseMode = 'Markdown') {
   if (!TOKEN || !CHAT_ID) return;
   try {
-    await axios.post(`${BASE}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text,
-      parse_mode: parseMode,
-    });
+    const payload = { chat_id: CHAT_ID, text };
+    if (parseMode) payload.parse_mode = parseMode;
+    await axios.post(`${BASE}/sendMessage`, payload);
   } catch (e) {
     console.error('Telegram error:', e.message);
   }
