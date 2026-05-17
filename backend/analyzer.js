@@ -5,164 +5,251 @@ const { getLatestCalibration } = require('./db');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SIDE_LABEL = { home: 'mandante', draw: 'empate', away: 'visitante' };
+// ─── Helpers de pré-processamento (robô) ────────────────────────────────────
 
-function buildMovementBlock(movements) {
-  if (!movements?.length) return '';
-  const lines = movements.map(mv => {
-    const dir = mv.pct > 0 ? '📈' : '📉';
-    return `    ${dir} ${mv.house} — ${SIDE_LABEL[mv.side] || mv.side}: ${mv.initial} → ${mv.current} (${mv.pct > 0 ? '+' : ''}${mv.pct}%)`;
-  }).join('\n');
-  return `\n  ⚠️ MOVIMENTAÇÃO DE MERCADO (vs abertura):\n${lines}`;
+function calcFormScore(formStr) {
+  if (!formStr || formStr === 'N/A') return null;
+  const chars = formStr.replace(/[^VDE]/g, '').split('').slice(0, 5);
+  if (chars.length === 0) return null;
+  const score = chars.reduce((s, c) => s + (c === 'V' ? 3 : c === 'E' ? 1 : 0), 0);
+  return { score, max: chars.length * 3, str: chars.join('') };
 }
+
+function motivScore(motivText) {
+  if (!motivText || motivText === 'N/A') return 1;
+  const t = motivText.toLowerCase();
+  if (t.includes('título') || t.includes('lider') || t.includes('líder')) return 3;
+  if (t.includes('rebaixamento') || t.includes('evitar')) return 3;
+  if (t.includes('europeia') || t.includes('continental') || t.includes('classificação')) return 2;
+  return 1;
+}
+
+function bestOddForSide(oddsMap, side) {
+  return Object.values(oddsMap)
+    .map(o => o[side])
+    .filter(Boolean)
+    .sort((a, b) => b - a)[0] || null;
+}
+
+function buildChecklist(r, oddsMap, prediction, confidence, mv) {
+  const hForm = calcFormScore(r?.homeFormHome);
+  const aForm = calcFormScore(r?.awayFormAway);
+  const hDef  = parseFloat(r?.homeGoalsConceded);
+  const aDef  = parseFloat(r?.awayGoalsConceded);
+  const hMotiv = motivScore(r?.homeMotivation);
+  const aMotiv = motivScore(r?.awayMotivation);
+  const isHome = prediction === 'HOME';
+  const isAway = prediction === 'AWAY';
+
+  // Forma
+  let formV = null, formN = 'Sem dados';
+  if (hForm !== null && aForm !== null) {
+    formV = isHome ? (hForm.score > aForm.score ? true : hForm.score < aForm.score ? false : null)
+          : isAway ? (aForm.score > hForm.score ? true : aForm.score < hForm.score ? false : null)
+          : null;
+    formN = `Casa ${hForm.str}(${hForm.score}/15) vs Fora ${aForm.str}(${aForm.score}/15)`;
+  }
+
+  // Defensiva
+  let defV = null, defN = 'Sem dados';
+  if (!isNaN(hDef) && !isNaN(aDef)) {
+    defV = isHome ? hDef <= aDef : isAway ? aDef <= hDef : null;
+    defN = `${hDef} vs ${aDef} gols sofridos/j`;
+  }
+
+  // Motivação
+  let motivV = null, motivN = 'Sem dados';
+  if (r?.homeMotivation && r?.awayMotivation) {
+    motivV = isHome ? (hMotiv > aMotiv ? true : hMotiv < aMotiv ? false : null)
+           : isAway ? (aMotiv > hMotiv ? true : aMotiv < hMotiv ? false : null)
+           : null;
+    motivN = `${r.homeMotivation.split('—')[0].trim()} | ${r.awayMotivation.split('—')[0].trim()}`;
+  }
+
+  // H2H — mantido como contexto textual, não avaliado por código
+  const h2hN = r?.h2hLast3 && r.h2hLast3 !== 'Sem dados' ? r.h2hLast3 : 'Sem dados';
+
+  // Movimentação de odds
+  let movV = null, movN = 'Estável';
+  if (mv?.length > 0) {
+    const predKey = isHome ? 'home' : isAway ? 'away' : 'draw';
+    const relevant = mv.filter(m => m.side === predKey);
+    if (relevant.length > 0) {
+      const avgPct = relevant.reduce((s, m) => s + parseFloat(m.pct), 0) / relevant.length;
+      movV = avgPct < -5 ? true : avgPct > 5 ? false : null;
+      movN = `${avgPct > 0 ? '+' : ''}${avgPct.toFixed(1)}% desde abertura`;
+    }
+  }
+
+  // Valor da odd vs confiança
+  const predKey2 = isHome ? 'home' : isAway ? 'away' : 'draw';
+  const best = bestOddForSide(oddsMap, predKey2);
+  let valueV = null, valueN = 'Sem dados';
+  if (best && confidence) {
+    const impl = (1 / best * 100).toFixed(0);
+    valueV = confidence > (1 / best * 100) + 5 ? true : confidence < (1 / best * 100) ? false : null;
+    valueN = `Conf. ${confidence}% vs implícita ${impl}% (odd ${best})`;
+  }
+
+  return [
+    { c: 'Forma casa/fora', v: formV, n: formN },
+    { c: 'Defensiva',       v: defV,  n: defN  },
+    { c: 'Motivação',       v: motivV, n: motivN },
+    { c: 'H2H',             v: null,  n: h2hN  },
+    { c: 'Mov. odds',       v: movV,  n: movN  },
+    { c: 'Valor da odd',    v: valueV, n: valueN },
+  ];
+}
+
+function makeAutoSkip(m, reason) {
+  const allOdds = formatOddsForMatch(m);
+  return {
+    match:        `${m.home_team} x ${m.away_team}`,
+    home_team:    m.home_team,
+    away_team:    m.away_team,
+    prediction:   'SKIP',
+    confidence:   0,
+    reasoning:    reason,
+    checklist:    ['Forma casa/fora','Defensiva','Motivação','H2H','Mov. odds','Valor da odd']
+                    .map(c => ({ c, v: null, n: 'Sem dados' })),
+    best_house:   null,
+    best_odd:     null,
+    all_odds:     allOdds,
+    sport_title:  m.sport_title || null,
+    sport_key:    m.sport_key   || null,
+    commence_time: m.commence_time || null,
+  };
+}
+
+// ─── Análise principal ───────────────────────────────────────────────────────
 
 async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {}, weatherMap = {}) {
   if (!matches || matches.length === 0) return [];
 
   const calibration = await getLatestCalibration();
 
-  const matchList = matches.map((m, i) => {
-    const oddsMap = formatOddsForMatch(m);
-    const oddsLines = Object.entries(oddsMap)
-      .map(([house, o]) => `    ${house}: Casa ${o.home ?? '-'} | Empate ${o.draw ?? '-'} | Fora ${o.away ?? '-'}`)
-      .join('\n');
+  // ETAPA 1 — Robô: separa jogos com e sem dados
+  const autoSkipped = [];
+  const toAnalyze   = [];
 
-    const time = new Date(m.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  for (const m of matches) {
     const key = `${m.home_team}|${m.away_team}`;
-    const r = researchMap[key];
-    const mv = movementMap[key];
-    const w = weatherMap[key];
-
-    let dataBlock = '';
-    if (r) {
-      dataBlock = `
-  📊 DADOS REAIS:
-    ${m.home_team} (MANDANTE):
-      Forma geral últ.5:     ${r.homeForm || 'N/A'}
-      Forma em CASA últ.5:   ${r.homeFormHome || 'N/A'}
-      Posição na tabela:     ${r.homePosition || 'N/A'}
-      Gols marcados/jogo:    ${r.homeGoalsAvg ?? 'N/A'}
-      Gols sofridos/jogo:    ${r.homeGoalsConceded ?? 'N/A'}
-      xG médio/jogo:         ${r.homeXG || 'N/A'}
-      Clean sheets (últ.10): ${r.homeCleanSheets || 'N/A'}
-      Motivação:             ${r.homeMotivation || 'N/A'}
-      Lesões/Suspensos:      ${r.homeInjuries || 'Nenhum conhecido'}
-
-    ${m.away_team} (VISITANTE):
-      Forma geral últ.5:     ${r.awayForm || 'N/A'}
-      Forma FORA últ.5:      ${r.awayFormAway || 'N/A'}
-      Posição na tabela:     ${r.awayPosition || 'N/A'}
-      Gols marcados/jogo:    ${r.awayGoalsAvg ?? 'N/A'}
-      Gols sofridos/jogo:    ${r.awayGoalsConceded ?? 'N/A'}
-      xG médio/jogo:         ${r.awayXG || 'N/A'}
-      Clean sheets (últ.10): ${r.awayCleanSheets || 'N/A'}
-      Motivação:             ${r.awayMotivation || 'N/A'}
-      Lesões/Suspensos:      ${r.awayInjuries || 'Nenhum conhecido'}
-
-    H2H (confrontos diretos): ${r.h2hLast3 || 'N/A'}
-    Info adicional:           ${r.keyInfo || 'N/A'}`;
+    if (!researchMap[key]) {
+      autoSkipped.push(makeAutoSkip(m, 'Sem dados estatísticos — time não encontrado na API.'));
+      console.log(`[ANALYZER] Auto-SKIP (sem dados): ${m.home_team} x ${m.away_team}`);
+    } else {
+      toAnalyze.push(m);
     }
+  }
 
-    dataBlock += buildMovementBlock(mv);
+  console.log(`[ANALYZER] ${autoSkipped.length} auto-SKIP (sem dados) | ${toAnalyze.length} enviados para IA`);
 
-    if (w) {
-      dataBlock += `\n  🌤️ CLIMA (${w.city}): ${w.description}`;
-      if (w.alerts) dataBlock += `\n     ⚠️ Alerta: ${w.alerts}`;
-    }
+  if (toAnalyze.length === 0) return autoSkipped;
 
-    return `${i + 1}. ${m.home_team} x ${m.away_team} — ${m.sport_title} — ${time}
-${oddsLines}${dataBlock}`;
+  // ETAPA 2 — Robô: monta prompt compacto com dados pré-processados
+  const matchList = toAnalyze.map((m, i) => {
+    const key    = `${m.home_team}|${m.away_team}`;
+    const r      = researchMap[key];
+    const mv     = movementMap[key];
+    const w      = weatherMap[key];
+    const odds   = formatOddsForMatch(m);
+    const time   = new Date(m.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    const hForm  = calcFormScore(r.homeFormHome);
+    const aForm  = calcFormScore(r.awayFormAway);
+    const formCasa = hForm ? `${r.homeFormHome}(${hForm.score}/15)` : (r.homeForm || 'N/A');
+    const formFora = aForm ? `${r.awayFormAway}(${aForm.score}/15)` : (r.awayForm || 'N/A');
+
+    const bHome = bestOddForSide(odds, 'home');
+    const bDraw = bestOddForSide(odds, 'draw');
+    const bAway = bestOddForSide(odds, 'away');
+    const impl  = o => o ? `(${(1/o*100).toFixed(0)}%)` : '';
+    const oddsLine = `Casa@${bHome ?? '-'}${impl(bHome)} Empate@${bDraw ?? '-'}${impl(bDraw)} Fora@${bAway ?? '-'}${impl(bAway)}`;
+
+    const movLine = mv?.length > 0
+      ? mv.map(v => `${v.house}:${v.side}${v.pct > 0 ? '+' : ''}${v.pct}%`).join(' ')
+      : 'estável';
+
+    const wLine = w ? `${w.description}${w.alerts ? ' ⚠️ ' + w.alerts : ''}` : 'N/A';
+
+    return (
+      `${i + 1}. ${m.home_team} x ${m.away_team} — ${m.sport_title} — ${time}\n` +
+      `   CASA: forma=${formCasa} | sofridos=${r.homeGoalsConceded ?? 'N/A'}/j | cs=${r.homeCleanSheets || 'N/A'} | pos=${r.homePosition || 'N/A'} | motiv=${r.homeMotivation || 'N/A'}\n` +
+      `   FORA: forma=${formFora} | sofridos=${r.awayGoalsConceded ?? 'N/A'}/j | cs=${r.awayCleanSheets || 'N/A'} | pos=${r.awayPosition || 'N/A'} | motiv=${r.awayMotivation || 'N/A'}\n` +
+      `   H2H: ${r.h2hLast3 || 'sem dados'} | Clima: ${wLine} | Mov: ${movLine}\n` +
+      `   Odds: ${oddsLine}`
+    );
   }).join('\n\n');
 
   const calibrationBlock = calibration
-    ? `\nCALIBRAÇÃO HISTÓRICA (aprendizado baseado nos seus resultados reais — aplique obrigatoriamente):\n${calibration.notes.map(n => `  • ${n}`).join('\n')}\nWin rate atual: ${(calibration.overall_win_rate * 100).toFixed(1)}% em ${calibration.sample_size} apostas (${calibration.period_days} dias)\n`
+    ? `CALIBRAÇÃO (aplique obrigatoriamente):\n${calibration.notes.map(n => `• ${n}`).join('\n')}\nWin rate: ${(calibration.overall_win_rate * 100).toFixed(1)}% em ${calibration.sample_size} apostas\n\n`
     : '';
 
-  const prompt = `Você é um analista esportivo profissional especialista em futebol. Analise cada jogo com profundidade máxima usando TODOS os dados fornecidos.
-${calibrationBlock}
+  const prompt =
+    `Você é um analista de apostas esportivas. Os dados abaixo foram pré-processados. Sua tarefa: integrar os sinais, decidir e justificar.\n` +
+    `${calibrationBlock}` +
+    `CRITÉRIOS (prioridade): 1)Forma casa/fora (score /15) 2)Defesa (sofridos/j) 3)Motivação 4)H2H 5)Mov.odds (queda=mercado profissional sinaliza) 6)Valor: só aposte se confiança > probabilidade implícita da odd\n\n` +
+    `JOGOS (${toAnalyze.length} com dados):\n${matchList}\n\n` +
+    `Responda APENAS com JSON válido. Inclua TODOS os ${toAnalyze.length} jogos:\n` +
+    `{\n  "predictions": [\n    {\n      "match": "Time A x Time B",\n      "home_team": "Time A",\n      "away_team": "Time B",\n      "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",\n      "confidence": 0-100,\n      "reasoning": "1-2 linhas citando dados específicos"\n    }\n  ]\n}`;
 
-CRITÉRIOS DE ANÁLISE (em ordem de importância):
-1. FORMA CASA/FORA: é mais decisiva que a forma geral — um visitante com DDDDD fora não merece apoio independente das odds
-2. xG (Expected Goals): revela se resultados recentes foram merecidos ou sorte — xG alto com poucos gols = time perigoso
-3. GOLS SOFRIDOS + CLEAN SHEETS: solidez defensiva é tão importante quanto ataque
-4. MOTIVAÇÃO: zona de rebaixamento gera desespero e intensidade extra; meio de tabela sem objetivos é apático
-5. H2H: padrões psicológicos entre times específicos importam
-6. CLIMA: chuva forte favorece times físicos e prejudica times técnicos; vento >10m/s atrapalha passes longos e chutes de longa distância; calor extremo favorece time local acostumado
-7. MOVIMENTAÇÃO DE ODDS: se odds caíram significativamente desde a abertura, apostadores profissionais sabem algo — leve muito a sério
-7. ODDS BRUTAS: use apenas para confirmar probabilidade implícita do mercado, nunca como critério único
-
-DECISÃO:
-- Só preveja se tiver 65%+ de confiança baseada nos dados concretos
-- Se os dados contradizem as odds, questione — o mercado erra
-- SKIP quando há muita incerteza ou dados insuficientes
-
-JOGOS:
-${matchList}
-
-Responda APENAS com JSON válido. Inclua TODOS os jogos, incluindo os com SKIP:
-{
-  "predictions": [
-    {
-      "match": "Time A x Time B",
-      "home_team": "Time A",
-      "away_team": "Time B",
-      "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",
-      "confidence": 0-100,
-      "reasoning": "cite dados específicos — 1-2 linhas objetivas",
-      "checklist": [
-        {"c": "Forma casa/fora", "v": true|false|null, "n": "nota curta"},
-        {"c": "Defensiva", "v": true|false|null, "n": "nota curta"},
-        {"c": "Motivação", "v": true|false|null, "n": "nota curta"},
-        {"c": "H2H", "v": true|false|null, "n": "nota curta"},
-        {"c": "Mov. odds", "v": true|false|null, "n": "nota curta"},
-        {"c": "Valor da odd", "v": true|false|null, "n": "nota curta"}
-      ]
-    }
-  ]
-}
-v: true=favorável | false=desfavorável | null=sem dados`;
-
+  // ETAPA 3 — IA: apenas decisão + raciocínio (sem checklist)
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 8000,
-    messages: [{ role: 'user', content: prompt }],
+    model:      'claude-sonnet-4-6',
+    max_tokens: 4000,
+    messages:   [{ role: 'user', content: prompt }],
   });
 
   const stopReason = response.stop_reason;
   console.log(`[ANALYZER] stop_reason: ${stopReason} | tokens usados: ${response.usage?.output_tokens ?? '?'}`);
-
   if (stopReason === 'max_tokens') {
-    console.log('[ANALYZER] RESPOSTA TRUNCADA — aumentar max_tokens ou reduzir jogos por chamada');
+    console.log('[ANALYZER] RESPOSTA TRUNCADA — aumentar max_tokens');
   }
 
+  let aiPredictions = [];
   try {
-    const text = response.content[0].text;
-    // Extrai o bloco JSON mesmo que Sonnet inclua texto antes/depois
+    const text   = response.content[0].text;
     const match0 = text.match(/\{[\s\S]*"predictions"[\s\S]*\}/);
     const jsonStr = match0 ? match0[0] : text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(jsonStr);
-    const predictions = parsed.predictions || [];
-    console.log(`[ANALYZER] Sonnet retornou ${predictions.length} previsões`);
-
-    return predictions.map(p => {
-      const match = matches.find(m => m.home_team === p.home_team && m.away_team === p.away_team);
-      const isSkip = p.prediction === 'SKIP';
-      const best = (!isSkip && match) ? getBestOdds(match, p.prediction) : { house: null, odd: null };
-      const allOdds = (!isSkip && match) ? formatOddsForMatch(match) : {};
-      return {
-        ...p,
-        best_house: best.house,
-        best_odd: best.odd,
-        all_odds: allOdds,
-        sport_title: match?.sport_title || null,
-        sport_key: match?.sport_key || null,
-        commence_time: match?.commence_time || null,
-      };
-    });
+    aiPredictions = JSON.parse(jsonStr).predictions || [];
+    console.log(`[ANALYZER] Sonnet retornou ${aiPredictions.length} previsões`);
   } catch (err) {
     console.log(`[ANALYZER] ERRO ao parsear resposta do Sonnet: ${err.message}`);
-    return [];
+    return autoSkipped;
   }
+
+  // ETAPA 4 — Robô: enriquece cada previsão com odds + checklist calculado
+  const enriched = aiPredictions.map(p => {
+    const m      = toAnalyze.find(x => x.home_team === p.home_team && x.away_team === p.away_team);
+    const key    = m ? `${m.home_team}|${m.away_team}` : null;
+    const r      = key ? researchMap[key] : null;
+    const mv     = key ? movementMap[key] : null;
+    const isSkip = p.prediction === 'SKIP';
+    const best   = (!isSkip && m) ? getBestOdds(m, p.prediction) : { house: null, odd: null };
+    const allOdds = (!isSkip && m) ? formatOddsForMatch(m) : {};
+    const checklist = buildChecklist(r, allOdds, p.prediction, p.confidence, mv);
+
+    return {
+      ...p,
+      checklist,
+      best_house:    best.house,
+      best_odd:      best.odd,
+      all_odds:      allOdds,
+      sport_title:   m?.sport_title   || null,
+      sport_key:     m?.sport_key     || null,
+      commence_time: m?.commence_time || null,
+    };
+  });
+
+  // ETAPA 5 — Robô: mescla resultados preservando ordem original
+  return matches.map(m => {
+    const key = `${m.home_team}|${m.away_team}`;
+    return (
+      autoSkipped.find(p => `${p.home_team}|${p.away_team}` === key) ||
+      enriched.find(p => `${p.home_team}|${p.away_team}` === key) ||
+      makeAutoSkip(m, 'Não retornado pelo modelo.')
+    );
+  });
 }
 
 module.exports = { analyzeTodaysMatches };
