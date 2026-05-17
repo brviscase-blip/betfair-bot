@@ -16,7 +16,11 @@ const SPORT_TO_COMP = {
 };
 
 function normalize(s) {
-  return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // remove acentos: á→a, ã→a, ç→c, etc.
+    .replace(/[^a-z0-9]/g, '');
 }
 
 function teamMatch(fdTeam, oddsName) {

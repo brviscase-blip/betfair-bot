@@ -41,7 +41,11 @@ async function getTodaysMatches() {
 
       allMatches.push(...todayMatches);
     } catch (err) {
-      console.error(`[odds] Erro ao buscar ${sport}: ${err.message}`);
+      if (err.response?.status === 404) {
+        console.log(`[odds] ${sport}: temporada encerrada ou liga inativa — ignorando`);
+      } else {
+        console.error(`[odds] Erro ao buscar ${sport}: ${err.message}`);
+      }
     }
   }
 
