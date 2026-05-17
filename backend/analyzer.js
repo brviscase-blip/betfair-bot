@@ -99,7 +99,7 @@ DECISÃO:
 JOGOS:
 ${matchList}
 
-Responda APENAS com JSON válido:
+Responda APENAS com JSON válido. Inclua TODOS os jogos, incluindo os com SKIP:
 {
   "predictions": [
     {
@@ -108,14 +108,23 @@ Responda APENAS com JSON válido:
       "away_team": "Time B",
       "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",
       "confidence": 0-100,
-      "reasoning": "cite dados específicos: forma casa/fora, xG, motivação, H2H, movimento de odds — 2-3 linhas objetivas"
+      "reasoning": "cite dados específicos — 1-2 linhas objetivas",
+      "checklist": [
+        {"c": "Forma casa/fora", "v": true|false|null, "n": "nota curta"},
+        {"c": "Defensiva", "v": true|false|null, "n": "nota curta"},
+        {"c": "Motivação", "v": true|false|null, "n": "nota curta"},
+        {"c": "H2H", "v": true|false|null, "n": "nota curta"},
+        {"c": "Mov. odds", "v": true|false|null, "n": "nota curta"},
+        {"c": "Valor da odd", "v": true|false|null, "n": "nota curta"}
+      ]
     }
   ]
-}`;
+}
+v: true=favorável | false=desfavorável | null=sem dados`;
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 3000,
+    max_tokens: 6000,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -125,22 +134,21 @@ Responda APENAS com JSON válido:
     const parsed = JSON.parse(json);
     const predictions = parsed.predictions || [];
 
-    return predictions
-      .filter(p => p.prediction !== 'SKIP')
-      .map(p => {
-        const match = matches.find(m => m.home_team === p.home_team && m.away_team === p.away_team);
-        const best = match ? getBestOdds(match, p.prediction) : { house: null, odd: null };
-        const allOdds = match ? formatOddsForMatch(match) : {};
-        return {
-          ...p,
-          best_house: best.house,
-          best_odd: best.odd,
-          all_odds: allOdds,
-          sport_title: match?.sport_title || null,
-          sport_key: match?.sport_key || null,
-          commence_time: match?.commence_time || null,
-        };
-      });
+    return predictions.map(p => {
+      const match = matches.find(m => m.home_team === p.home_team && m.away_team === p.away_team);
+      const isSkip = p.prediction === 'SKIP';
+      const best = (!isSkip && match) ? getBestOdds(match, p.prediction) : { house: null, odd: null };
+      const allOdds = (!isSkip && match) ? formatOddsForMatch(match) : {};
+      return {
+        ...p,
+        best_house: best.house,
+        best_odd: best.odd,
+        all_odds: allOdds,
+        sport_title: match?.sport_title || null,
+        sport_key: match?.sport_key || null,
+        commence_time: match?.commence_time || null,
+      };
+    });
   } catch {
     return [];
   }

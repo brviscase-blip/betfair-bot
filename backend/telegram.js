@@ -124,6 +124,41 @@ function startPolling(handler) {
   drainPendingUpdates().then(loop);
 }
 
+async function sendDebugReport(allPredictions) {
+  if (!allPredictions || allPredictions.length === 0) return;
+
+  const approved = allPredictions.filter(p => p.prediction !== 'SKIP');
+  const skipped  = allPredictions.filter(p => p.prediction === 'SKIP');
+  const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const ICON = { true: '✅', false: '❌', null: '⚪' };
+  const PRED = { HOME: 'MANDANTE', DRAW: 'EMPATE', AWAY: 'VISITANTE' };
+
+  let text = `📋 *Análise completa — ${date}*\n`;
+  text += `${allPredictions.length} jogos | ✅ *${approved.length} aprovados* _(≥65%)_ | ⏭ ${skipped.length} descartados\n`;
+  text += `\`━━━━━━━━━━━━━━━━━━━\`\n`;
+
+  for (const p of allPredictions) {
+    const isSkip = p.prediction === 'SKIP';
+    const icon   = isSkip ? '⏭' : '🎯';
+    const pred   = isSkip ? 'SKIP' : (PRED[p.prediction] || p.prediction);
+    text += `\n${icon} *${p.match}* — ${p.confidence}% — ${pred}\n`;
+    text += `_${p.reasoning}_\n`;
+    if (p.checklist?.length) {
+      text += p.checklist.map(item => {
+        const key = item.v === true ? 'true' : item.v === false ? 'false' : 'null';
+        return `${ICON[key]} ${item.c}: ${item.n}`;
+      }).join('\n') + '\n';
+    }
+  }
+
+  // Envia em blocos de até 4000 chars para respeitar limite do Telegram
+  const MAX = 4000;
+  for (let i = 0; i < text.length; i += MAX) {
+    await sendMessage(text.slice(i, i + MAX));
+    if (i + MAX < text.length) await new Promise(r => setTimeout(r, 400));
+  }
+}
+
 async function sendCalibrationReport(calibration) {
   if (!calibration) return;
   const { notes, overall_win_rate, sample_size, period_days } = calibration;
@@ -138,4 +173,4 @@ async function sendCalibrationReport(calibration) {
   await sendMessage(text);
 }
 
-module.exports = { sendMessage, sendDailyReport, sendCalibrationReport, startPolling };
+module.exports = { sendMessage, sendDailyReport, sendDebugReport, sendCalibrationReport, startPolling };

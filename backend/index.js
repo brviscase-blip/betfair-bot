@@ -7,7 +7,7 @@ const { analyzeTodaysMatches } = require('./analyzer');
 const { getMatchStats } = require('./stats');
 const { researchMatch } = require('./researcher');
 const { getWeather } = require('./weather');
-const { sendMessage, sendDailyReport, sendCalibrationReport, startPolling } = require('./telegram');
+const { sendMessage, sendDailyReport, sendDebugReport, sendCalibrationReport, startPolling } = require('./telegram');
 const { checkDailyResults } = require('./results');
 const { runWeeklyCalibration } = require('./calibrator');
 const {
@@ -127,10 +127,14 @@ async function runDailyAnalysis({ force = false } = {}) {
   const researched = Object.keys(researchMap).length;
   log(`🔎 ${researched}/${matches.length} jogos com dados reais — analisando...`, 'info');
 
-  const predictions = await analyzeTodaysMatches(matches, researchMap, movementMap, weatherMap);
+  const allPredictions = await analyzeTodaysMatches(matches, researchMap, movementMap, weatherMap);
+  const predictions = allPredictions.filter(p => p.prediction !== 'SKIP');
+
+  // Relatório completo sempre enviado (aprovados + descartados com checklist)
+  await sendDebugReport(allPredictions);
+
   if (predictions.length === 0) {
     log('IA não encontrou jogos com confiança suficiente', 'warn');
-    await sendMessage('📋 *Análise do dia*\n\nNenhum jogo com confiança suficiente hoje.');
     return;
   }
 
