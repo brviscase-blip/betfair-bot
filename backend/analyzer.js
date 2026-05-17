@@ -124,9 +124,16 @@ v: true=favorável | false=desfavorável | null=sem dados`;
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 6000,
+    max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
+
+  const stopReason = response.stop_reason;
+  console.log(`[ANALYZER] stop_reason: ${stopReason} | tokens usados: ${response.usage?.output_tokens ?? '?'}`);
+
+  if (stopReason === 'max_tokens') {
+    console.log('[ANALYZER] RESPOSTA TRUNCADA — aumentar max_tokens ou reduzir jogos por chamada');
+  }
 
   try {
     const text = response.content[0].text;
