@@ -130,9 +130,12 @@ v: true=favorável | false=desfavorável | null=sem dados`;
 
   try {
     const text = response.content[0].text;
-    const json = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(json);
+    // Extrai o bloco JSON mesmo que Sonnet inclua texto antes/depois
+    const match0 = text.match(/\{[\s\S]*"predictions"[\s\S]*\}/);
+    const jsonStr = match0 ? match0[0] : text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(jsonStr);
     const predictions = parsed.predictions || [];
+    console.log(`[ANALYZER] Sonnet retornou ${predictions.length} previsões`);
 
     return predictions.map(p => {
       const match = matches.find(m => m.home_team === p.home_team && m.away_team === p.away_team);
@@ -149,7 +152,8 @@ v: true=favorável | false=desfavorável | null=sem dados`;
         commence_time: match?.commence_time || null,
       };
     });
-  } catch {
+  } catch (err) {
+    console.log(`[ANALYZER] ERRO ao parsear resposta do Sonnet: ${err.message}`);
     return [];
   }
 }

@@ -123,7 +123,11 @@ function startPolling(handler) {
 }
 
 async function sendDebugReport(allPredictions) {
-  if (!allPredictions || allPredictions.length === 0) return;
+  if (!allPredictions || allPredictions.length === 0) {
+    console.log('[TELEGRAM] sendDebugReport: allPredictions vazio, nada a enviar');
+    await sendMessage('📋 Análise concluída — nenhuma previsão retornada pelo modelo (possível erro de parse).');
+    return;
+  }
 
   const approved = allPredictions.filter(p => p.prediction !== 'SKIP');
   const skipped  = allPredictions.filter(p => p.prediction === 'SKIP');
@@ -131,21 +135,20 @@ async function sendDebugReport(allPredictions) {
   const ICON = { true: '✅', false: '❌', null: '⚪' };
   const PRED = { HOME: 'MANDANTE', DRAW: 'EMPATE', AWAY: 'VISITANTE' };
 
-  // Cabeçalho em texto puro para evitar erros de escape MarkdownV2
+  console.log(`[TELEGRAM] Enviando debug report: ${allPredictions.length} jogos (${approved.length} aprovados, ${skipped.length} descartados)`);
+
   await sendMessage(
     `📋 Análise completa — ${date}\n` +
-    `${allPredictions.length} jogos | ✅ ${approved.length} aprovados (conf. >=65%) | ⏭ ${skipped.length} descartados`,
-    null
+    `${allPredictions.length} jogos | ✅ ${approved.length} aprovados (conf >=65%) | ⏭ ${skipped.length} descartados`
   );
 
-  // Um card por jogo — sem Markdown complexo para evitar erros de formatação
   for (const p of allPredictions) {
     const isSkip = p.prediction === 'SKIP';
     const pred   = isSkip ? 'SKIP' : (PRED[p.prediction] || p.prediction);
     const icon   = isSkip ? '⏭' : '🎯';
 
     let card = `${icon} ${p.match} — ${p.confidence}% — ${pred}\n`;
-    card += `${p.reasoning}\n`;
+    card += `${p.reasoning || 'sem raciocínio'}\n`;
 
     if (p.checklist?.length) {
       card += p.checklist.map(item => {
@@ -154,9 +157,11 @@ async function sendDebugReport(allPredictions) {
       }).join('\n');
     }
 
-    await sendMessage(card, null); // null = sem parse_mode, texto puro
-    await new Promise(r => setTimeout(r, 300));
+    await sendMessage(card, ''); // texto puro — reasoning pode ter _ ou * que quebram Markdown
+    await new Promise(r => setTimeout(r, 400));
   }
+
+  console.log('[TELEGRAM] Debug report enviado com sucesso');
 }
 
 async function sendCalibrationReport(calibration) {
