@@ -14,7 +14,7 @@ const {
   initDB, getSimState, setSimState,
   insertPrediction, getTodaysPredictions,
   updatePredictionResult, getPredictionHistory,
-  analysisAlreadyDoneToday,
+  analysisAlreadyDoneToday, markAnalysisDoneToday,
   saveOddsSnapshot, getOddsMovement,
 } = require('./db');
 
@@ -63,6 +63,7 @@ async function runDailyAnalysis({ force = false } = {}) {
 
   log('🔍 Iniciando análise diária...', 'info');
   lastAnalysis = new Date().toISOString();
+  if (!force) await markAnalysisDoneToday(); // marca antes de chamar Sonnet para evitar duplicata em restart
 
   const matches = await getTodaysMatches();
   if (matches.length === 0) {

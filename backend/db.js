@@ -82,11 +82,14 @@ async function getPredictionHistory(limit = 50) {
 
 async function analysisAlreadyDoneToday() {
   const today = new Date().toISOString().split('T')[0];
-  const { count } = await supabase
-    .from('betbot_predictions')
-    .select('id', { count: 'exact', head: true })
-    .eq('date', today);
-  return (count || 0) > 0;
+  const sim = await getSimState();
+  return sim.lastAnalysisDate === today;
+}
+
+async function markAnalysisDoneToday() {
+  const sim = await getSimState();
+  sim.lastAnalysisDate = new Date().toISOString().split('T')[0];
+  await setSimState(sim);
 }
 
 async function getPendingPredictions() {
@@ -182,6 +185,7 @@ module.exports = {
   updatePredictionResult,
   getPredictionHistory,
   analysisAlreadyDoneToday,
+  markAnalysisDoneToday,
   saveOddsSnapshot,
   getOddsMovement,
   saveCalibration,

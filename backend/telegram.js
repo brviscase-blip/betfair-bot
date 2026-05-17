@@ -133,11 +133,11 @@ async function sendDebugReport(allPredictions) {
   const ICON = { true: '✅', false: '❌', null: '⚪' };
   const PRED = { HOME: 'MANDANTE', DRAW: 'EMPATE', AWAY: 'VISITANTE' };
 
-  // Cabeçalho
+  // Cabeçalho em texto puro para evitar erros de escape MarkdownV2
   await sendMessage(
     `📋 Análise completa — ${date}\n` +
-    `${allPredictions.length} jogos | ✅ ${approved.length} aprovados (≥65%) | ⏭ ${skipped.length} descartados`,
-    'MarkdownV2'
+    `${allPredictions.length} jogos | ✅ ${approved.length} aprovados (conf. >=65%) | ⏭ ${skipped.length} descartados`,
+    null
   );
 
   // Um card por jogo — sem Markdown complexo para evitar erros de formatação
