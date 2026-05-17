@@ -188,7 +188,7 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {},
   const prompt =
     `Você é um analista de apostas esportivas. Os dados abaixo foram pré-processados. Sua tarefa: integrar os sinais, decidir e justificar.\n` +
     `${calibrationBlock}` +
-    `CRITÉRIOS (prioridade): 1)Forma casa/fora (score /15) 2)Defesa (sofridos/j) 3)Motivação 4)H2H 5)Mov.odds (queda=mercado profissional sinaliza) 6)Valor: só aposte se confiança > probabilidade implícita da odd\n\n` +
+    `CRITÉRIOS (prioridade): 1)Forma casa/fora (score /15) 2)Defesa (sofridos/j) 3)Motivação 4)H2H 5)Mov.odds (queda=mercado profissional sinaliza) 6)Valor: só aposte se confiança > probabilidade implícita da odd\nLIMIAR MÍNIMO: confiança < 65% → obrigatoriamente SKIP, independente de valor calculado.\n\n` +
     `JOGOS (${toAnalyze.length} com dados):\n${matchList}\n\n` +
     `Responda APENAS com JSON válido. Inclua TODOS os ${toAnalyze.length} jogos:\n` +
     `{\n  "predictions": [\n    {\n      "match": "Time A x Time B",\n      "home_team": "Time A",\n      "away_team": "Time B",\n      "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",\n      "confidence": 0-100,\n      "reasoning": "1-2 linhas citando dados específicos"\n    }\n  ]\n}`;

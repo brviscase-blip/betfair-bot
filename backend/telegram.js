@@ -21,7 +21,7 @@ function buildPredictionCard(p) {
   const selectionName = PRED_LABEL[p.prediction] || p.prediction;
 
   const time = p.commence_time
-    ? new Date(p.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
+    ? new Date(p.commence_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Manaus' })
     : '--:--';
 
   const sport = p.sport_title || 'Futebol';
@@ -129,8 +129,8 @@ async function sendDebugReport(allPredictions) {
     return;
   }
 
-  const approved = allPredictions.filter(p => p.prediction !== 'SKIP');
-  const skipped  = allPredictions.filter(p => p.prediction === 'SKIP');
+  const approved = allPredictions.filter(p => p.prediction !== 'SKIP' && p.confidence >= 65);
+  const skipped  = allPredictions.filter(p => p.prediction === 'SKIP' || p.confidence < 65);
   const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   const ICON = { true: '✅', false: '❌', null: '⚪' };
   const PRED = { HOME: 'MANDANTE', DRAW: 'EMPATE', AWAY: 'VISITANTE' };
@@ -139,7 +139,7 @@ async function sendDebugReport(allPredictions) {
 
   await sendMessage(
     `📋 Análise completa — ${date}\n` +
-    `${allPredictions.length} jogos | ✅ ${approved.length} aprovados (conf >=65%) | ⏭ ${skipped.length} descartados`
+    `${allPredictions.length} jogos | ✅ ${approved.length} aprovados (conf ≥65%) | ⏭ ${skipped.length} descartados/abaixo do limiar`
   );
 
   for (const p of allPredictions) {

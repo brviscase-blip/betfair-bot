@@ -129,7 +129,8 @@ async function runDailyAnalysis({ force = false } = {}) {
   log(`🔎 ${researched}/${matches.length} jogos com dados reais — analisando...`, 'info');
 
   const allPredictions = await analyzeTodaysMatches(matches, researchMap, movementMap, weatherMap);
-  const predictions = allPredictions.filter(p => p.prediction !== 'SKIP');
+  const MIN_CONFIDENCE = 65;
+  const predictions = allPredictions.filter(p => p.prediction !== 'SKIP' && p.confidence >= MIN_CONFIDENCE);
 
   // Relatório completo sempre enviado (aprovados + descartados com checklist)
   await sendDebugReport(allPredictions);
@@ -275,7 +276,7 @@ app.listen(PORT, async () => {
         const predictions = await getTodaysPredictions();
         const state = botRunning ? '✅ LIGADO' : '⛔ DESLIGADO';
         const last = lastAnalysis
-          ? new Date(lastAnalysis).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+          ? new Date(lastAnalysis).toLocaleString('pt-BR', { timeZone: 'America/Manaus' })
           : 'Nunca';
         await sendMessage(
           `🤖 *BetBot AI — Status*\n\nBot: ${state}\nÚltima análise: ${last}\nPrevisões hoje: ${predictions.length}`
