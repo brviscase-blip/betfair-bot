@@ -6,7 +6,7 @@ const BASE_URL = 'https://api.the-odds-api.com/v4';
 const SPORTS = [
   'soccer_brazil_campeonato',
   'soccer_spain_la_liga',
-  'soccer_uefa_champs_league',
+  'soccer_england_premier_league',
 ];
 
 const BOOKMAKER_LABELS = {
