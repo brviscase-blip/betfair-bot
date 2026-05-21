@@ -59,8 +59,18 @@ async function getTodaysPredictions() {
     .from('betbot_predictions')
     .select('*')
     .eq('date', today)
+    .neq('prediction', 'SKIP')
     .order('created_at', { ascending: true });
   return data || [];
+}
+
+async function getTodaysAnalyzedMatchKeys() {
+  const today = new Date().toISOString().split('T')[0];
+  const { data } = await supabase
+    .from('betbot_predictions')
+    .select('home_team, away_team')
+    .eq('date', today);
+  return new Set((data || []).map(p => `${p.home_team}|${p.away_team}`));
 }
 
 async function updatePredictionResult(id, result) {
@@ -181,6 +191,7 @@ module.exports = {
   setSimState,
   insertPrediction,
   getTodaysPredictions,
+  getTodaysAnalyzedMatchKeys,
   getPendingPredictions,
   updatePredictionResult,
   getPredictionHistory,

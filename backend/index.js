@@ -12,7 +12,7 @@ const { checkDailyResults } = require('./results');
 const { runWeeklyCalibration } = require('./calibrator');
 const {
   initDB, getSimState, setSimState,
-  insertPrediction, getTodaysPredictions,
+  insertPrediction, getTodaysPredictions, getTodaysAnalyzedMatchKeys,
   updatePredictionResult, getPredictionHistory,
   analysisAlreadyDoneToday, markAnalysisDoneToday,
   saveOddsSnapshot, getOddsMovement,
@@ -53,34 +53,46 @@ async function takeOddsSnapshot(label) {
 
 // ─── Análise diária ──────────────────────────────────────────────────────────
 
-async function runDailyAnalysis({ force = false } = {}) {
+// sweep=true → só analisa jogos novos, silencioso se vazio (varreduras 12h/16h)
+// force=true + sweep=false → re-analisa tudo sem filtro (comando /analisar manual)
+async function runDailyAnalysis({ force = false, sweep = false, label = 'morning' } = {}) {
   if (!botRunning) { log('Bot pausado, análise cancelada', 'warn'); return; }
 
-  if (!force) {
+  if (!force && !sweep) {
     const alreadyDone = await analysisAlreadyDoneToday();
     if (alreadyDone) { log('Análise já feita hoje, pulando', 'info'); return; }
   }
 
-  log('🔍 Iniciando análise diária...', 'info');
+  log(`🔍 Iniciando varredura (${label})...`, 'info');
   lastAnalysis = new Date().toISOString();
-  if (!force) await markAnalysisDoneToday(); // marca antes de chamar Sonnet para evitar duplicata em restart
+  if (!force && !sweep) await markAnalysisDoneToday();
 
-  const matches = await getTodaysMatches();
+  const allMatches = await getTodaysMatches();
+
+  // Deduplicação: filtra jogos já analisados hoje, exceto em re-análise manual (force && !sweep)
+  let matches = allMatches;
+  if (!force || sweep) {
+    const analyzedKeys = await getTodaysAnalyzedMatchKeys();
+    matches = allMatches.filter(m => !analyzedKeys.has(`${m.home_team}|${m.away_team}`));
+  }
+
   if (matches.length === 0) {
-    log('Nenhum jogo encontrado para hoje', 'warn');
-    await sendMessage('📋 *Análise do dia*\n\nNenhum jogo encontrado para hoje.');
+    if (!sweep) {
+      log('Nenhum jogo encontrado para hoje', 'warn');
+      await sendMessage('📋 *Análise do dia*\n\nNenhum jogo encontrado para hoje.');
+    } else {
+      log(`Varredura ${label}: sem jogos novos`, 'info');
+    }
     return;
   }
 
-  // Salva snapshot de abertura das odds
   const today = new Date().toISOString().split('T')[0];
   for (const m of matches) {
-    await saveOddsSnapshot(`${m.home_team}|${m.away_team}`, m.sport_key, 'morning', formatOddsForMatch(m));
+    await saveOddsSnapshot(`${m.home_team}|${m.away_team}`, m.sport_key, label, formatOddsForMatch(m));
   }
 
-  log(`📋 ${matches.length} jogos encontrados — buscando estatísticas reais...`, 'info');
+  log(`📋 ${matches.length} jogo(s) novo(s) na varredura ${label} — buscando estatísticas...`, 'info');
 
-  // Ligas com cobertura completa na football-data.org — web search nunca é fallback para essas
   const COVERED_SPORTS = new Set([
     'soccer_brazil_campeonato',
     'soccer_spain_la_liga',
@@ -99,7 +111,6 @@ async function runDailyAnalysis({ force = false } = {}) {
       researchMap[key] = stats;
       log(`📊 [API] ${m.home_team} x ${m.away_team}`, 'info');
     } else if (!COVERED_SPORTS.has(m.sport_key)) {
-      // Web search apenas para ligas sem cobertura na API estruturada
       const web = await researchMatch(m.home_team, m.away_team);
       if (web) {
         researchMap[key] = web;
@@ -110,7 +121,6 @@ async function runDailyAnalysis({ force = false } = {}) {
     }
   }
 
-  // Movimentação de odds (histórico 7 dias)
   const movementMap = {};
   for (const m of matches) {
     const key = `${m.home_team}|${m.away_team}`;
@@ -118,7 +128,6 @@ async function runDailyAnalysis({ force = false } = {}) {
     if (mv) movementMap[key] = mv;
   }
 
-  // Clima do estádio mandante
   const weatherMap = {};
   await Promise.all(matches.map(async m => {
     const w = await getWeather(m.home_team);
@@ -130,33 +139,33 @@ async function runDailyAnalysis({ force = false } = {}) {
 
   const allPredictions = await analyzeTodaysMatches(matches, researchMap, movementMap, weatherMap);
   const MIN_CONFIDENCE = 65;
-  const predictions = allPredictions.filter(p => p.prediction !== 'SKIP' && p.confidence >= MIN_CONFIDENCE);
+  const approved = allPredictions.filter(p => p.prediction !== 'SKIP' && p.confidence >= MIN_CONFIDENCE);
 
-  // Relatório completo sempre enviado (aprovados + descartados com checklist)
-  await sendDebugReport(allPredictions);
-
-  if (predictions.length === 0) {
-    log('IA não encontrou jogos com confiança suficiente', 'warn');
-    return;
-  }
-
-  for (const p of predictions) {
+  // Salva TODOS (incluindo SKIP e abaixo do limiar) para deduplicação nas próximas varreduras
+  for (const p of allPredictions) {
     try {
       await insertPrediction(p);
     } catch (err) {
-      log(`Erro ao salvar previsão: ${err.message}`, 'error');
+      log(`Erro ao salvar: ${err.message}`, 'error');
     }
   }
 
-  log(`✅ ${predictions.length} previsões salvas`, 'success');
-  await sendDailyReport(predictions);
+  await sendDebugReport(allPredictions);
+
+  if (approved.length === 0) {
+    log(`Varredura ${label}: nenhum jogo com confiança suficiente`, 'warn');
+    return;
+  }
+
+  log(`✅ ${approved.length} previsão(ões) aprovada(s) — varredura ${label}`, 'success');
+  await sendDailyReport(approved);
 }
 
 // ─── Crons ───────────────────────────────────────────────────────────────────
 
-cron.schedule('0 6 * * *',  () => runDailyAnalysis());           // Análise principal
-cron.schedule('0 14 * * *', () => takeOddsSnapshot('afternoon')); // Snapshot tarde
-cron.schedule('0 18 * * *', () => takeOddsSnapshot('evening'));   // Snapshot noite
+cron.schedule('0 6 * * *',  () => runDailyAnalysis());                                                    // Varredura manhã
+cron.schedule('0 12 * * *', () => runDailyAnalysis({ force: true, sweep: true, label: 'afternoon' })); // Varredura tarde
+cron.schedule('0 16 * * *', () => runDailyAnalysis({ force: true, sweep: true, label: 'evening' }));   // Varredura noite
 cron.schedule('0 23 * * *', async () => {                         // Verifica resultados
   try {
     const count = await checkDailyResults();
