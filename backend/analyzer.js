@@ -31,6 +31,45 @@ function bestOddForSide(oddsMap, side) {
     .sort((a, b) => b - a)[0] || null;
 }
 
+// Resumo de sinais neutro (sem saber o lado apostado) — enviado para a IA antes da decisão
+function buildSignalSummary(r, mv) {
+  const parts = [];
+
+  const hForm = calcFormScore(r?.homeFormHome);
+  const aForm = calcFormScore(r?.awayFormAway);
+  if (hForm && aForm) {
+    const d = hForm.score - aForm.score;
+    parts.push(`forma:${d > 2 ? 'CASA-SUPERIOR' : d < -2 ? 'FORA-SUPERIOR' : 'EQUILIBRADA'}(${hForm.score}vs${aForm.score})`);
+  }
+
+  const hAtk = parseFloat(r?.homeGoalsAvg), aAtk = parseFloat(r?.awayGoalsAvg);
+  if (!isNaN(hAtk) && !isNaN(aAtk)) {
+    const d = hAtk - aAtk;
+    parts.push(`ataque:${d > 0.2 ? 'CASA-SUPERIOR' : d < -0.2 ? 'FORA-SUPERIOR' : 'EQUILIBRADO'}(${hAtk}vs${aAtk}/j)`);
+  }
+
+  const hDef = parseFloat(r?.homeGoalsConceded), aDef = parseFloat(r?.awayGoalsConceded);
+  if (!isNaN(hDef) && !isNaN(aDef)) {
+    const d = hDef - aDef;
+    parts.push(`defesa:${d < -0.2 ? 'CASA-SUPERIOR' : d > 0.2 ? 'FORA-SUPERIOR' : 'EQUILIBRADA'}(sofridos:${hDef}vs${aDef}/j)`);
+  }
+
+  const hM = motivScore(r?.homeMotivation), aM = motivScore(r?.awayMotivation);
+  if (r?.homeMotivation && r?.awayMotivation)
+    parts.push(`motiv:${hM > aM ? 'CASA-MAIOR' : hM < aM ? 'FORA-MAIOR' : 'IGUAL'}`);
+
+  if (mv?.length > 0) {
+    const hAvg = mv.filter(v => v.side === 'home').reduce((s, v) => s + parseFloat(v.pct), 0) / (mv.filter(v => v.side === 'home').length || 1);
+    const aAvg = mv.filter(v => v.side === 'away').reduce((s, v) => s + parseFloat(v.pct), 0) / (mv.filter(v => v.side === 'away').length || 1);
+    const hHas = mv.some(v => v.side === 'home'), aHas = mv.some(v => v.side === 'away');
+    if (hHas && hAvg < -5)      parts.push(`mercado:DINHEIRO-NO-CASA(odd-casa-caiu${hAvg.toFixed(1)}%)`);
+    else if (aHas && aAvg < -5) parts.push(`mercado:DINHEIRO-NO-FORA(odd-fora-caiu${aAvg.toFixed(1)}%)`);
+    else                         parts.push('mercado:ESTAVEL-ou-SAINDO');
+  }
+
+  return parts.join(' | ');
+}
+
 function buildChecklist(r, oddsMap, prediction, confidence, mv) {
   const hForm = calcFormScore(r?.homeFormHome);
   const aForm = calcFormScore(r?.awayFormAway);
@@ -181,13 +220,15 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {},
       : 'estável';
 
     const wLine = w ? `${w.description}${w.alerts ? ' ⚠️ ' + w.alerts : ''}` : 'N/A';
+    const signals = buildSignalSummary(r, mv);
 
     return (
       `${i + 1}. ${m.home_team} x ${m.away_team} — ${m.sport_title} — ${time}\n` +
       `   CASA: forma=${formCasa} | marcados=${r.homeGoalsAvg ?? 'N/A'}/j | sofridos=${r.homeGoalsConceded ?? 'N/A'}/j | cs=${r.homeCleanSheets || 'N/A'} | pos=${r.homePosition || 'N/A'} | motiv=${r.homeMotivation || 'N/A'}\n` +
       `   FORA: forma=${formFora} | marcados=${r.awayGoalsAvg ?? 'N/A'}/j | sofridos=${r.awayGoalsConceded ?? 'N/A'}/j | cs=${r.awayCleanSheets || 'N/A'} | pos=${r.awayPosition || 'N/A'} | motiv=${r.awayMotivation || 'N/A'}\n` +
       `   H2H: ${r.h2hLast3 || 'sem dados'} | Clima: ${wLine} | Mov: ${movLine}\n` +
-      `   Odds: ${oddsLine}`
+      `   Odds: ${oddsLine}\n` +
+      `   SINAIS: ${signals}`
     );
   }).join('\n\n');
 
@@ -198,10 +239,10 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {},
   const prompt =
     `Você é um analista de apostas esportivas. Os dados abaixo foram pré-processados. Sua tarefa: integrar os sinais, decidir e justificar.\n` +
     `${calibrationBlock}` +
-    `CRITÉRIOS (prioridade): 1)Forma casa/fora (score /15) 2)Ataque (marcados/j) 3)Defesa (sofridos/j) 4)Motivação 5)H2H 6)Mov.odds: CAIU=dinheiro-entrando=bom-sinal; SUBIU=mercado-saindo=mau-sinal 7)Valor: só aposte se confiança > probabilidade implícita da odd\nLIMIAR MÍNIMO: confiança < 65% → obrigatoriamente SKIP, independente de valor calculado.\nREBAIXAMENTO BILATERAL: se visitante só precisa de empate para sobreviver → reduza confiança no mandante, o visitante jogará retrancado e dificilmente perde.\nFIM-DE-TEMPORADA: time já campeão ou sem nada a disputar rotaciona jogadores — desconsidere forma recente, reduza confiança.\n\n` +
+    `CRITÉRIOS (prioridade): 1)Forma casa/fora (score /15) 2)Ataque (marcados/j) 3)Defesa (sofridos/j) 4)Motivação 5)H2H 6)Mov.odds: CAIU=dinheiro-entrando=bom-sinal; SUBIU=mercado-saindo=mau-sinal 7)Valor: só aposte se confiança > probabilidade implícita da odd\nLIMIAR MÍNIMO: confiança < 65% → obrigatoriamente SKIP, independente de valor calculado.\nREBAIXAMENTO BILATERAL: se visitante só precisa de empate para sobreviver → reduza confiança no mandante, o visitante jogará retrancado e dificilmente perde.\nFIM-DE-TEMPORADA: time já campeão ou sem nada a disputar rotaciona jogadores — desconsidere forma recente, reduza confiança.\nRESPONSABILIDADE ANALÍTICA: Cada jogo tem uma linha SINAIS com o balanço calculado. Para aprovar uma aposta, seu reasoning DEVE citar explicitamente cada sinal que contradiz seu lado escolhido e explicar por que não é determinante neste contexto específico. Argumento genérico ("bom valor", "movimento favorável") sem refutar os sinais negativos não é suficiente → SKIP. Você é o analista: ganhe a aprovação pelo argumento, não pela omissão.\n\n` +
     `JOGOS (${toAnalyze.length} com dados):\n${matchList}\n\n` +
     `Responda APENAS com JSON válido. Inclua TODOS os ${toAnalyze.length} jogos:\n` +
-    `{\n  "predictions": [\n    {\n      "match": "Time A x Time B",\n      "home_team": "Time A",\n      "away_team": "Time B",\n      "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",\n      "confidence": 0-100,\n      "reasoning": "1-2 linhas citando dados específicos"\n    }\n  ]\n}`;
+    `{\n  "predictions": [\n    {\n      "match": "Time A x Time B",\n      "home_team": "Time A",\n      "away_team": "Time B",\n      "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",\n      "confidence": 0-100,\n      "reasoning": "2-4 linhas: cite os dados que sustentam E refute explicitamente cada sinal contrário"\n    }\n  ]\n}`;
 
   // ETAPA 3 — IA: apenas decisão + raciocínio (sem checklist)
   const response = await client.messages.create({
