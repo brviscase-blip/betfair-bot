@@ -177,7 +177,7 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {},
     const oddsLine = `Casa@${bHome ?? '-'}${impl(bHome)} Empate@${bDraw ?? '-'}${impl(bDraw)} Fora@${bAway ?? '-'}${impl(bAway)}`;
 
     const movLine = mv?.length > 0
-      ? mv.map(v => `${v.house}:${v.side}${v.pct > 0 ? '+' : ''}${v.pct}%`).join(' ')
+      ? mv.map(v => `${v.house}:${v.side} ${parseFloat(v.pct) > 0 ? 'SUBIU+' : 'CAIU'}${v.pct}%`).join(' | ')
       : 'estável';
 
     const wLine = w ? `${w.description}${w.alerts ? ' ⚠️ ' + w.alerts : ''}` : 'N/A';
@@ -198,7 +198,7 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {},
   const prompt =
     `Você é um analista de apostas esportivas. Os dados abaixo foram pré-processados. Sua tarefa: integrar os sinais, decidir e justificar.\n` +
     `${calibrationBlock}` +
-    `CRITÉRIOS (prioridade): 1)Forma casa/fora (score /15) 2)Ataque (marcados/j) 3)Defesa (sofridos/j) 4)Motivação 5)H2H 6)Mov.odds (queda=mercado profissional sinaliza) 7)Valor: só aposte se confiança > probabilidade implícita da odd\nLIMIAR MÍNIMO: confiança < 65% → obrigatoriamente SKIP, independente de valor calculado.\nREBAIXAMENTO BILATERAL: se visitante só precisa de empate para sobreviver → reduza confiança no mandante, o visitante jogará retrancado e dificilmente perde.\n\n` +
+    `CRITÉRIOS (prioridade): 1)Forma casa/fora (score /15) 2)Ataque (marcados/j) 3)Defesa (sofridos/j) 4)Motivação 5)H2H 6)Mov.odds: CAIU=dinheiro-entrando=bom-sinal; SUBIU=mercado-saindo=mau-sinal 7)Valor: só aposte se confiança > probabilidade implícita da odd\nLIMIAR MÍNIMO: confiança < 65% → obrigatoriamente SKIP, independente de valor calculado.\nREBAIXAMENTO BILATERAL: se visitante só precisa de empate para sobreviver → reduza confiança no mandante, o visitante jogará retrancado e dificilmente perde.\nFIM-DE-TEMPORADA: time já campeão ou sem nada a disputar rotaciona jogadores — desconsidere forma recente, reduza confiança.\n\n` +
     `JOGOS (${toAnalyze.length} com dados):\n${matchList}\n\n` +
     `Responda APENAS com JSON válido. Inclua TODOS os ${toAnalyze.length} jogos:\n` +
     `{\n  "predictions": [\n    {\n      "match": "Time A x Time B",\n      "home_team": "Time A",\n      "away_team": "Time B",\n      "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",\n      "confidence": 0-100,\n      "reasoning": "1-2 linhas citando dados específicos"\n    }\n  ]\n}`;
