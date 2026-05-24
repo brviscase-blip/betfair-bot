@@ -50,6 +50,15 @@ function buildChecklist(r, oddsMap, prediction, confidence, mv) {
     formN = `Casa ${hForm.str}(${hForm.score}/15) vs Fora ${aForm.str}(${aForm.score}/15)`;
   }
 
+  // Ataque (gols marcados)
+  const hAtk = parseFloat(r?.homeGoalsAvg);
+  const aAtk = parseFloat(r?.awayGoalsAvg);
+  let atkV = null, atkN = 'Sem dados';
+  if (!isNaN(hAtk) && !isNaN(aAtk)) {
+    atkV = isHome ? hAtk >= aAtk : isAway ? aAtk >= hAtk : null;
+    atkN = `${hAtk} vs ${aAtk} gols marcados/j`;
+  }
+
   // Defensiva
   let defV = null, defN = 'Sem dados';
   if (!isNaN(hDef) && !isNaN(aDef)) {
@@ -93,6 +102,7 @@ function buildChecklist(r, oddsMap, prediction, confidence, mv) {
 
   return [
     { c: 'Forma casa/fora', v: formV, n: formN },
+    { c: 'Ataque',          v: atkV,  n: atkN  },
     { c: 'Defensiva',       v: defV,  n: defN  },
     { c: 'Motivação',       v: motivV, n: motivN },
     { c: 'H2H',             v: null,  n: h2hN  },
@@ -110,7 +120,7 @@ function makeAutoSkip(m, reason) {
     prediction:   'SKIP',
     confidence:   0,
     reasoning:    reason,
-    checklist:    ['Forma casa/fora','Defensiva','Motivação','H2H','Mov. odds','Valor da odd']
+    checklist:    ['Forma casa/fora','Ataque','Defensiva','Motivação','H2H','Mov. odds','Valor da odd']
                     .map(c => ({ c, v: null, n: 'Sem dados' })),
     best_house:   null,
     best_odd:     null,
@@ -174,8 +184,8 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {},
 
     return (
       `${i + 1}. ${m.home_team} x ${m.away_team} — ${m.sport_title} — ${time}\n` +
-      `   CASA: forma=${formCasa} | sofridos=${r.homeGoalsConceded ?? 'N/A'}/j | cs=${r.homeCleanSheets || 'N/A'} | pos=${r.homePosition || 'N/A'} | motiv=${r.homeMotivation || 'N/A'}\n` +
-      `   FORA: forma=${formFora} | sofridos=${r.awayGoalsConceded ?? 'N/A'}/j | cs=${r.awayCleanSheets || 'N/A'} | pos=${r.awayPosition || 'N/A'} | motiv=${r.awayMotivation || 'N/A'}\n` +
+      `   CASA: forma=${formCasa} | marcados=${r.homeGoalsAvg ?? 'N/A'}/j | sofridos=${r.homeGoalsConceded ?? 'N/A'}/j | cs=${r.homeCleanSheets || 'N/A'} | pos=${r.homePosition || 'N/A'} | motiv=${r.homeMotivation || 'N/A'}\n` +
+      `   FORA: forma=${formFora} | marcados=${r.awayGoalsAvg ?? 'N/A'}/j | sofridos=${r.awayGoalsConceded ?? 'N/A'}/j | cs=${r.awayCleanSheets || 'N/A'} | pos=${r.awayPosition || 'N/A'} | motiv=${r.awayMotivation || 'N/A'}\n` +
       `   H2H: ${r.h2hLast3 || 'sem dados'} | Clima: ${wLine} | Mov: ${movLine}\n` +
       `   Odds: ${oddsLine}`
     );
@@ -188,7 +198,7 @@ async function analyzeTodaysMatches(matches, researchMap = {}, movementMap = {},
   const prompt =
     `Você é um analista de apostas esportivas. Os dados abaixo foram pré-processados. Sua tarefa: integrar os sinais, decidir e justificar.\n` +
     `${calibrationBlock}` +
-    `CRITÉRIOS (prioridade): 1)Forma casa/fora (score /15) 2)Defesa (sofridos/j) 3)Motivação 4)H2H 5)Mov.odds (queda=mercado profissional sinaliza) 6)Valor: só aposte se confiança > probabilidade implícita da odd\nLIMIAR MÍNIMO: confiança < 65% → obrigatoriamente SKIP, independente de valor calculado.\n\n` +
+    `CRITÉRIOS (prioridade): 1)Forma casa/fora (score /15) 2)Ataque (marcados/j) 3)Defesa (sofridos/j) 4)Motivação 5)H2H 6)Mov.odds (queda=mercado profissional sinaliza) 7)Valor: só aposte se confiança > probabilidade implícita da odd\nLIMIAR MÍNIMO: confiança < 65% → obrigatoriamente SKIP, independente de valor calculado.\nREBAIXAMENTO BILATERAL: se visitante só precisa de empate para sobreviver → reduza confiança no mandante, o visitante jogará retrancado e dificilmente perde.\n\n` +
     `JOGOS (${toAnalyze.length} com dados):\n${matchList}\n\n` +
     `Responda APENAS com JSON válido. Inclua TODOS os ${toAnalyze.length} jogos:\n` +
     `{\n  "predictions": [\n    {\n      "match": "Time A x Time B",\n      "home_team": "Time A",\n      "away_team": "Time B",\n      "prediction": "HOME" | "DRAW" | "AWAY" | "SKIP",\n      "confidence": 0-100,\n      "reasoning": "1-2 linhas citando dados específicos"\n    }\n  ]\n}`;
